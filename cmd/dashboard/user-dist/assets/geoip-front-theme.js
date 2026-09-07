@@ -2,6 +2,9 @@
   if (window.__geoipFrontThemeInstalled) return;
   window.__geoipFrontThemeInstalled = true;
 
+  // Enable OS/platform column in card view
+  window.FixedTopServerName = true;
+
   var version = "front-theme-20260624a";
   var scripts = [
     "/assets/geoip-dashboard-link-fix-20260614.js",
