@@ -7,7 +7,7 @@ on:
       - master
 
 env:
-  DOCKER_IMAGE_NAME: nezha-geoip-panel
+  DOCKER_IMAGE_NAME: nezha-panel
 
 concurrency:
   group: build-dashboard-app-image-${{ github.ref }}
@@ -40,6 +40,9 @@ jobs:
           echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
           echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Pre-pull BuildKit image
         run: |
           for attempt in 1 2 3 4 5; do
@@ -67,7 +70,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.dashboard-app
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
