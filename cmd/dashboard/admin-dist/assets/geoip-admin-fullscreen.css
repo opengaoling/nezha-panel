@@ -1,0 +1,172 @@
+/* Full-width admin layout overrides for the embedded Nezha admin dist. */
+html,
+body,
+#root {
+  min-width: 0;
+}
+
+#root {
+  --admin-page-gutter: clamp(12px, 1.8vw, 24px);
+}
+
+#root main,
+#root main > div,
+#root .container,
+#root .max-w-5xl,
+#root .max-w-7xl,
+#root [class*="max-w-"] {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+}
+
+#root header {
+  padding-left: var(--admin-page-gutter) !important;
+  padding-right: var(--admin-page-gutter) !important;
+}
+
+#root header > .max-w-5xl,
+#root .max-w-5xl.mx-auto,
+#root .max-w-7xl.mx-auto,
+#root .container.mx-auto,
+#root [class*="max-w-"].mx-auto {
+  padding-left: var(--admin-page-gutter) !important;
+  padding-right: var(--admin-page-gutter) !important;
+}
+
+#root .px-3.max-w-7xl,
+#root .px-3 {
+  padding-left: var(--admin-page-gutter) !important;
+  padding-right: var(--admin-page-gutter) !important;
+}
+
+#root table {
+  width: 100% !important;
+}
+
+#root .overflow-x-auto,
+#root [class*="overflow-x-auto"] {
+  max-width: calc(100vw - var(--admin-page-gutter) * 2) !important;
+  overflow-x: auto !important;
+}
+
+#root .overflow-x-auto > table,
+#root [class*="overflow-x-auto"] > table {
+  min-width: max-content !important;
+}
+
+#root table th,
+#root table td {
+  white-space: nowrap;
+}
+
+#root table th:last-child,
+#root table td:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 1;
+  background: hsl(var(--background));
+}
+
+#root td:has(.geoip-admin-id-cell),
+#root td:has(.geoip-admin-compact-trigger),
+#root td:has(.geoip-admin-actions) {
+  white-space: nowrap;
+}
+
+#root .geoip-admin-id-cell {
+  display: flex;
+  min-width: 4.75rem;
+  max-width: 13rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  line-height: 1.2;
+}
+
+#root .geoip-admin-id-geo {
+  max-width: 100%;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+#root .geoip-admin-compact-trigger {
+  display: inline-flex;
+  width: 2rem;
+  justify-content: center;
+}
+
+#root .geoip-admin-actions {
+  align-items: center;
+  justify-content: flex-start;
+  white-space: nowrap;
+}
+
+#root .geoip-admin-compact-trigger button,
+#root .geoip-admin-actions button {
+  height: 2rem;
+  min-height: 2rem;
+  width: 2rem;
+  min-width: 2rem;
+  padding: 0;
+}
+
+#root .min-w-\[960px\] {
+  min-width: max(960px, 100%) !important;
+}
+
+#root .overflow-x-auto {
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+#root .overflow-x-auto::-webkit-scrollbar {
+  display: block;
+  height: 8px;
+}
+
+#root .overflow-x-auto::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.35);
+  border-radius: 999px;
+}
+
+#root [class*="justify-between"] {
+  min-width: 0;
+}
+
+#root [class*="justify-between"] > * {
+  min-width: 0;
+}
+
+#root [class*="gap-2"][class*="ml-auto"],
+#root [class*="gap-2"]:has(button),
+#root [class*="gap-2"]:has(a[role="button"]) {
+  display: flex !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-end !important;
+  min-width: max-content !important;
+  overflow: visible !important;
+}
+
+#root button,
+#root a,
+#root [role="button"] {
+  flex-shrink: 0;
+}
+
+@media (max-width: 767px) {
+  #root {
+    --admin-page-gutter: 10px;
+  }
+
+  #root h1 {
+    font-size: 1.5rem !important;
+    line-height: 2rem !important;
+  }
+}

@@ -27,11 +27,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Sync external frontend assets
-        run: |
-          chmod +x ./script/sync-geoip-frontend.sh
-          ./script/sync-geoip-frontend.sh
-
       - name: Set image metadata
         id: meta
         run: |

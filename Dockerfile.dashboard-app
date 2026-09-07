@@ -9,10 +9,6 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
 WORKDIR /src
 COPY . .
 
-ARG FRONTEND_REPO=https://github.com/opengaoling/nezha-geoip-frontend.git
-ARG FRONTEND_REF=main
-RUN FRONTEND_REPO="${FRONTEND_REPO}" FRONTEND_REF="${FRONTEND_REF}" ./script/sync-geoip-frontend.sh
-
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
     go install github.com/swaggo/swag/cmd/swag@latest
