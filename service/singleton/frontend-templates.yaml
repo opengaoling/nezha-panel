@@ -6,11 +6,11 @@
   is_admin: true
   is_official: true
 - path: "user-dist"
-  name: "Official"
+  name: "Community"
   repository: "https://github.com/opengaoling/nezha-geoip-frontend"
   author: "opengaoling"
   version: "v2.1.2"
-  is_official: true
+  is_official: false
 - path: "nazhua-dist"
   name: "Nazhua"
   repository: "https://github.com/hi2shark/nazhua"
