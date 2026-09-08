@@ -27,6 +27,14 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Checkout frontend
+        uses: actions/checkout@v5
+        with:
+          repository: opengaoling/nezha-geoip-frontend
+          path: frontend
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - name: Set image metadata
         id: meta
         run: |

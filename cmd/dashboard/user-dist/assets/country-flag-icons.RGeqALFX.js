@@ -1,1 +1,0 @@
-function e(e){return t(e[0])+t(e[1])}function t(e){return String.fromCodePoint(127397+e.toUpperCase().charCodeAt(0))}export{e as t};
