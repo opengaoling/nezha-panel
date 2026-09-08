@@ -7,8 +7,8 @@
   is_official: true
 - path: "user-dist"
   name: "Official"
-  repository: "https://github.com/hamster1963/nezha-dash-v2"
-  author: "hamster1963"
+  repository: "https://github.com/opengaoling/nezha-geoip-frontend"
+  author: "opengaoling"
   version: "v2.1.2"
   is_official: true
 - path: "nazhua-dist"
