@@ -23,3 +23,8 @@
 /resource/static/custom
 /cmd/dashboard/docs
 .omo/
+# 前端资源由 nezha-geoip-frontend 仓库提供（构建时 checkout）
+cmd/dashboard/admin-dist/*
+!cmd/dashboard/admin-dist/.gitkeep
+cmd/dashboard/user-dist/*
+!cmd/dashboard/user-dist/.gitkeep
