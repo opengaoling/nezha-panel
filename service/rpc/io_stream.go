@@ -49,7 +49,8 @@ var bufPool = sync.Pool{
 }
 
 const (
-	maxStreamsPerUser  = 20
+	maxStreamsPerUser   = 20
+	maxStreamsPerServer = 40
 )
 
 var (
@@ -61,8 +62,8 @@ var (
 // NAT tunnels compete with terminal/fm/MCP for the global per-server budget
 // (40). This NAT-specific cap reserves slots for those features.
 func GetNATStreamLimit() int {
-	if Conf != nil && Conf.NAT.PerServerStreamLimit > 0 {
-		return Conf.NAT.PerServerStreamLimit
+	if singleton.Conf != nil && singleton.Conf.NAT.PerServerStreamLimit > 0 {
+		return singleton.Conf.NAT.PerServerStreamLimit
 	}
 	return 20
 }
