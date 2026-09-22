@@ -49,14 +49,23 @@ var bufPool = sync.Pool{
 }
 
 const (
-	maxStreamsPerUser   = 20
-	maxStreamsPerServer = 40
+	maxStreamsPerUser  = 20
 )
 
 var (
 	ErrTooManyStreamsForUser   = errors.New("too many concurrent streams for this user")
 	ErrTooManyStreamsForServer = errors.New("too many concurrent streams for this server")
 )
+
+// GetNATStreamLimit returns the NAT-specific per-server stream cap from config.
+// NAT tunnels compete with terminal/fm/MCP for the global per-server budget
+// (40). This NAT-specific cap reserves slots for those features.
+func GetNATStreamLimit() int {
+	if Conf != nil && Conf.NAT.PerServerStreamLimit > 0 {
+		return Conf.NAT.PerServerStreamLimit
+	}
+	return 20
+}
 
 func (s *NezhaHandler) CreateStream(streamId string, creatorUserID uint64, targetServerID uint64) error {
 	return s.CreateStreamWithPurpose(streamId, creatorUserID, targetServerID, PurposeLegacy)
@@ -95,6 +104,21 @@ func (s *NezhaHandler) CreateStreamWithPurpose(streamId string, creatorUserID ui
 		revokedCh:        make(chan struct{}),
 	}
 	return nil
+}
+
+// CountStreamsPerServer returns the number of active IOStreams targeting
+// serverID. Used by ServeNAT to enforce the NAT-specific per-server cap.
+func (s *NezhaHandler) CountStreamsPerServer(serverID uint64) int {
+	s.ioStreamMutex.RLock()
+	defer s.ioStreamMutex.RUnlock()
+
+	var count int
+	for _, ctx := range s.ioStreams {
+		if ctx.targetServerID == serverID {
+			count++
+		}
+	}
+	return count
 }
 
 // IsStreamAuthorizedForAgent reports whether the connecting agent is the

@@ -118,8 +118,32 @@ type Config struct {
 	// 内存配置
 	Memory MemoryConf `koanf:"memory" json:"memory"`
 
+	// NAT 穿透配置
+	NAT NATConf `koanf:"nat" json:"nat,omitempty"`
+
 	k        *koanf.Koanf `json:"-"`
 	filePath string       `json:"-"`
+}
+
+// NATConf holds tunable parameters for the built-in NAT (HTTP tunnel) feature.
+type NATConf struct {
+	// StreamTimeoutSec is the maximum seconds to wait for both the user
+	// connection and the agent to attach to a NAT IOStream before giving up.
+	// Default: 10 seconds.
+	StreamTimeoutSec int `koanf:"stream_timeout_sec" json:"stream_timeout_sec,omitempty"`
+
+	// PerServerStreamLimit is the maximum number of concurrent NAT tunnels
+	// that may target a single server (agent). The global per-server IOStream
+	// cap (40) covers all stream types; this NAT-specific cap reserves the
+	// rest for terminal / file-manager / MCP.
+	// Default: 20.
+	PerServerStreamLimit int `koanf:"per_server_stream_limit" json:"per_server_stream_limit,omitempty"`
+
+	// MaxRetries is the number of additional times to retry creating a NAT
+	// tunnel when the agent's gRPC task stream drops mid-connect (transient
+	// disconnect). Each retry re-sends the TaskTypeNAT and re-waits.
+	// Default: 1 (one retry = two attempts total).
+	MaxRetries int `koanf:"max_retries" json:"max_retries,omitempty"`
 }
 
 type HTTPSConf struct {
@@ -226,7 +250,6 @@ func (c *Config) Read(path string, frontendTemplates []FrontendTemplate) error {
 		}
 	}
 
-	// Keep browser sessions valid for at least one day.
 	if c.JWTTimeout < JWTTimeoutMinHours {
 		c.JWTTimeout = JWTTimeoutMinHours
 	}
@@ -242,6 +265,17 @@ func (c *Config) Read(path string, frontendTemplates []FrontendTemplate) error {
 	}
 
 	c.mcpEnabled.Store(c.EnableMCP)
+
+	// Apply NAT defaults (zero values from YAML get sensible defaults)
+	if c.NAT.StreamTimeoutSec <= 0 {
+		c.NAT.StreamTimeoutSec = 10
+	}
+	if c.NAT.PerServerStreamLimit <= 0 {
+		c.NAT.PerServerStreamLimit = 20
+	}
+	if c.NAT.MaxRetries < 0 {
+		c.NAT.MaxRetries = 1
+	}
 
 	return nil
 }

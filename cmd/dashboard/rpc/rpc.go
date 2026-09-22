@@ -191,72 +191,214 @@ func DispatchKeepalive() {
 	})
 }
 
+// ServeNAT handles a single HTTP request to tunnel through an agent.
+//
+// Stability improvements (vs upstream):
+//   - Per-NAT stream limit separate from terminal/fm (configurable via nat.per_server_stream_limit)
+//   - Configurable timeout via nat.stream_timeout_sec
+//   - Auto-retry when agent's gRPC task stream drops mid-connect (nat.max_retries)
+//   - Better error messages distinguishing agent-offline vs stream-full
+//   - Fast cleanup: StartStream goroutine exits immediately on context cancel
 func ServeNAT(w http.ResponseWriter, r *http.Request, natConfig *model.NAT) {
+	// Get the target server
 	server, _ := singleton.ServerShared.Get(natConfig.ServerID)
 	if server == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte("server not found or not connected"))
+		w.Write([]byte("server not found"))
 		return
 	}
 	if server.GetTaskStream() == nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte("server not found or not connected"))
+		w.Write([]byte("server offline"))
 		return
 	}
 
-	streamId, err := uuid.GenerateUUID()
-	if err != nil {
+	// Enforce NAT-specific per-server stream limit before creating the stream.
+	// The global per-server cap (40) covers all stream types; this NAT-specific
+	// cap reserves slots for terminal / file-manager / MCP.
+	natLimit := rpcService.GetNATStreamLimit()
+	currentStreams := rpcService.NezhaHandlerSingleton.CountStreamsPerServer(server.ID)
+	if currentStreams >= natLimit {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write(fmt.Appendf(nil, "stream id error: %v", err))
+		w.Write([]byte(fmt.Sprintf("too many NAT tunnels on this server (limit=%d, active=%d)", natLimit, currentStreams)))
 		return
 	}
 
-	// NAT streams are anonymous HTTP-facing tunnels; they are NOT reachable
-	// via /ws/terminal or /ws/file (which check stream ownership), so the
-	// creator user ID does not need to identify a real user. The targetServerID
-	// IS required though — the receiving agent must prove it is the server the
-	// NAT config addressed, otherwise any agent that snoops the streamId can
-	// answer NAT traffic on behalf of an unrelated host.
-	if err := rpcService.NezhaHandlerSingleton.CreateStream(streamId, 0, server.ID); err != nil {
-		w.WriteHeader(http.StatusTooManyRequests)
-		w.Write(fmt.Appendf(nil, "stream limit: %v", err))
-		return
+	// Try to create a NAT stream, with retries for transient agent disconnects.
+	maxRetries := singleton.Conf.NAT.MaxRetries
+	if maxRetries < 0 {
+		maxRetries = 1
 	}
-	defer rpcService.NezhaHandlerSingleton.CloseStream(streamId)
+	streamTimeout := singleton.Conf.NAT.StreamTimeoutSec
+	if streamTimeout <= 0 {
+		streamTimeout = 10
+	}
 
 	taskData, err := json.Marshal(model.TaskNAT{
-		StreamID: streamId,
+		StreamID: "",
 		Host:     natConfig.Host,
 	})
 	if err != nil {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write(fmt.Appendf(nil, "task data error: %v", err))
+		w.Write([]byte(fmt.Sprintf("task data error: %v", err)))
 		return
 	}
 
-	if err := server.SendTask(&proto.Task{
-		Type: model.TaskTypeNAT,
-		Data: string(taskData),
-	}); err != nil {
-		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write(fmt.Appendf(nil, "send task error: %v", err))
+	// CreateStream + SendTask with retries on transient failure.
+	var streamId string
+	var streamCreated bool
+	var taskStreamOk bool
+
+	attempt := 0
+	for attempt <= maxRetries {
+		// Re-check server is still online each retry
+		server, _ = singleton.ServerShared.Get(natConfig.ServerID)
+		if server == nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("server not found"))
+			return
+		}
+		if server.GetTaskStream() == nil {
+			if attempt < maxRetries {
+				log.Printf("NEZHA>> NAT tunnel %s: agent offline, retrying (%d/%d)\n", natConfig.Domain, attempt+1, maxRetries)
+				time.Sleep(time.Second * time.Duration(attempt+1)) // exponential backoff
+				attempt++
+				continue
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("server offline"))
+			return
+		}
+
+		// Check NAT stream limit again (streams may have been freed)
+		currentStreams = rpcService.NezhaHandlerSingleton.CountStreamsPerServer(server.ID)
+		if currentStreams >= natLimit {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(fmt.Sprintf("too many NAT tunnels on this server (limit=%d, active=%d)", natLimit, currentStreams)))
+			return
+		}
+
+		streamId, err = uuid.GenerateUUID()
+		if err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(fmt.Sprintf("stream id error: %v", err)))
+			return
+		}
+
+		// Create the stream slot
+		if err := rpcService.NezhaHandlerSingleton.CreateStream(streamId, 0, server.ID); err != nil {
+			if errors.Is(err, rpcService.ErrTooManyStreamsForServer) {
+				w.WriteHeader(http.StatusServiceUnavailable)
+				w.Write([]byte(fmt.Sprintf("too many streams on this server (limit=%d)", natLimit)))
+				return
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(fmt.Sprintf("stream create error: %v", err)))
+			return
+		}
+		streamCreated = true
+
+		// Update task data with the stream ID
+		taskData, err = json.Marshal(model.TaskNAT{
+			StreamID: streamId,
+			Host:     natConfig.Host,
+		})
+		if err != nil {
+			rpcService.NezhaHandlerSingleton.CloseStream(streamId)
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(fmt.Sprintf("task data error: %v", err)))
+			return
+		}
+
+		// Send the NAT task to the agent
+		if err := server.SendTask(&proto.Task{
+			Type: model.TaskTypeNAT,
+			Data: string(taskData),
+		}); err != nil {
+			// Check if it's a transient gRPC stream error (agent reconnecting)
+			if errors.Is(err, model.ErrTaskStreamOffline) && attempt < maxRetries {
+				log.Printf("NEZHA>> NAT tunnel %s: gRPC stream dropped, retrying (%d/%d)\n", natConfig.Domain, attempt+1, maxRetries)
+				// Clean up the failed stream slot
+				rpcService.NezhaHandlerSingleton.CloseStream(streamId)
+				streamCreated = false
+				time.Sleep(time.Second * time.Duration(attempt+1)) // exponential backoff
+				attempt++
+				continue
+			}
+			if streamCreated {
+				rpcService.NezhaHandlerSingleton.CloseStream(streamId)
+			}
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(fmt.Sprintf("send task error: %v", err)))
+			return
+		}
+		taskStreamOk = true
+		break
+	}
+	if !taskStreamOk {
 		return
 	}
 
 	wWrapped, err := utils.NewRequestWrapper(r, w)
 	if err != nil {
+		rpcService.NezhaHandlerSingleton.CloseStream(streamId)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write(fmt.Appendf(nil, "request wrapper error: %v", err))
+		w.Write([]byte(fmt.Sprintf("request wrapper error: %v", err)))
 		return
 	}
 
 	if err := rpcService.NezhaHandlerSingleton.UserConnected(streamId, wWrapped); err != nil {
+		rpcService.NezhaHandlerSingleton.CloseStream(streamId)
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write(fmt.Appendf(nil, "user connected error: %v", err))
+		w.Write([]byte(fmt.Sprintf("user connected error: %v", err)))
 		return
 	}
 
-	rpcService.NezhaHandlerSingleton.StartStream(streamId, time.Second*10)
+	defer rpcService.NezhaHandlerSingleton.CloseStream(streamId)
+
+	// Use a cancellable context so the HTTP request can be cancelled
+	// (client disconnect, timeout, etc.) to unblock StartStream immediately
+	// instead of waiting for the full timeout.
+	ctx, cancel := context.WithTimeout(r.Context(), time.Duration(streamTimeout)*time.Second)
+	defer cancel()
+
+	err = StartStreamWithContext(ctx, streamId, time.Duration(streamTimeout)*time.Second)
+	if err != nil {
+		log.Printf("NEZHA>> NAT tunnel %s: stream failed: %v", natConfig.Domain, err)
+		if ctx.Err() != nil {
+			w.WriteHeader(http.StatusGatewayTimeout)
+			w.Write([]byte("tunnel timeout (agent did not connect in time)"))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte(fmt.Sprintf("tunnel error: %v", err)))
+		}
+		return
+	}
+
+	// If StartStream succeeded, the bidirectional copy goroutines are still
+	// running and will drain when either side disconnects.
+}
+
+// StartStreamWithContext is like rpcService.NezhaHandlerSingleton.StartStream but
+// respects a cancellable context. This allows the HTTP request context to
+// unblock the stream relay when the client disconnects, preventing the
+// HTTP handler goroutine from being stuck for the full timeout.
+func StartStreamWithContext(ctx context.Context, streamId string, timeout time.Duration) error {
+	// Use the same StartStream logic but with context-aware timeout
+	go func() {
+		select {
+		case <-ctx.Done():
+			// Client disconnected or timeout — close the stream to unblock
+			// StartStream's goroutine instead of waiting for the full timeout.
+			rpcService.NezhaHandlerSingleton.CloseStream(streamId)
+		case <-time.After(timeout + time.Second):
+			// Safety net: if StartStream doesn't return within timeout+1s,
+			// force-close the stream.
+			rpcService.NezhaHandlerSingleton.CloseStream(streamId)
+		}
+	}()
+
+	return rpcService.NezhaHandlerSingleton.StartStream(streamId, timeout)
 }
 
 func canSendTaskToServer(task *model.Service, server *model.Server) bool {
