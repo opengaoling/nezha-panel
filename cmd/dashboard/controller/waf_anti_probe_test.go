@@ -62,6 +62,7 @@ func setupAntiProbeWAFTest(t *testing.T) (*gin.Engine, *jwt.GinJWTMiddleware, fu
 	r.POST("/api/v1/login", func(c *gin.Context) { c.String(http.StatusOK, "login-ok") })
 	r.GET("/dashboard/", func(c *gin.Context) { c.String(http.StatusOK, "dashboard-ok") })
 	r.GET("/dashboard/login", func(c *gin.Context) { c.String(http.StatusOK, "dashboard-login-ok") })
+	r.GET("/dashboard/service", func(c *gin.Context) { c.String(http.StatusOK, "dashboard-service-ok") })
 	r.GET("/api/v1/profile", func(c *gin.Context) { c.String(http.StatusOK, "profile-ok") })
 	r.GET("/api/v1/server", func(c *gin.Context) { c.String(http.StatusOK, "server-ok") })
 	r.POST("/mcp", func(c *gin.Context) { c.String(http.StatusOK, "mcp-ok") })
@@ -318,12 +319,12 @@ func TestSecretPathProtectionAndRouting(t *testing.T) {
 	assert.Equal(t, http.StatusOK, wDashUnauth.Code)
 	assert.Equal(t, "dashboard-ok", wDashUnauth.Body.String())
 
-	// 3e2. GET /{secret}/dashboard/service (unauthenticated, with valid secret) -> 200 OK "dashboard-ok"
+	// 3e2. GET /{secret}/dashboard/service (unauthenticated, with valid secret) -> 200 OK "dashboard-service-ok"
 	reqDashSubUnauth := httptest.NewRequest("GET", "/"+secret+"/dashboard/service", nil)
 	wDashSubUnauth := httptest.NewRecorder()
 	handler.ServeHTTP(wDashSubUnauth, reqDashSubUnauth)
 	assert.Equal(t, http.StatusOK, wDashSubUnauth.Code)
-	assert.Equal(t, "dashboard-ok", wDashSubUnauth.Body.String())
+	assert.Equal(t, "dashboard-service-ok", wDashSubUnauth.Body.String())
 
 	// 3f. GET /{secret}/dashboard/ (authenticated with nz-jwt) -> 200 OK "dashboard-ok"
 	reqDashAuth := httptest.NewRequest("GET", "/"+secret+"/dashboard/", nil)
