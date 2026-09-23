@@ -236,10 +236,11 @@ func unauthorized() func(c *gin.Context, code int, message string) {
 
 func respondUnauthorized(c *gin.Context) {
 	clearAuthCookies(c)
-	c.Header("Content-Type", "text/plain; charset=utf-8")
-	c.Header("X-Content-Type-Options", "nosniff")
-	c.String(http.StatusNotFound, "404 page not found\n")
-	c.Abort()
+	c.Header(authInvalidHeader, "1")
+	c.AbortWithStatusJSON(http.StatusUnauthorized, model.CommonResponse[any]{
+		Success: false,
+		Error:   "ApiErrorUnauthorized",
+	})
 }
 
 func clearAuthCookies(c *gin.Context) {

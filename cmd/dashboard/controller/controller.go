@@ -30,6 +30,7 @@ import (
 func ServeWeb(frontendDist fs.FS) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
+	r.RedirectTrailingSlash = false
 
 	r.Use(waf.RealIp)
 	r.Use(waf.Waf)

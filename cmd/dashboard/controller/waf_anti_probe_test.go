@@ -46,6 +46,7 @@ func setupAntiProbeWAFTest(t *testing.T) (*gin.Engine, *jwt.GinJWTMiddleware, fu
 	}}
 
 	r := gin.New()
+	r.RedirectTrailingSlash = false
 	r.Use(waf.Waf)
 
 	authMw, err := jwt.New(initParams())
