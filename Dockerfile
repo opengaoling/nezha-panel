@@ -15,7 +15,7 @@ WORKDIR /dashboard
 COPY dist/dashboard-${TARGETOS}-${TARGETARCH} ./app
 
 VOLUME ["/dashboard/data", "/dashboard/geoip"]
-EXPOSE 8008
+EXPOSE 2052
 ARG TZ=Asia/Shanghai
 ENV TZ=$TZ
 ENTRYPOINT ["/entrypoint.sh"]
