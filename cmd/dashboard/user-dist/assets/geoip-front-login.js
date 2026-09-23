@@ -119,14 +119,11 @@
     }
   }
 
-  var gateEventsBound = false;
   function bindGateEvents() {
-    if (gateEventsBound) return;
-    gateEventsBound = true;
-
     // Bind theme button
     var themeBtn = document.getElementById("nz-theme-toggle-btn");
-    if (themeBtn) {
+    if (themeBtn && !themeBtn.__bound) {
+      themeBtn.__bound = true;
       updateThemeIcon(getCurrentTheme());
       themeBtn.addEventListener("click", toggleTheme);
     }
@@ -134,7 +131,8 @@
     // Bind password toggle
     var pwdInput = document.getElementById("nz-password");
     var pwdToggle = document.getElementById("nz-pwd-toggle");
-    if (pwdInput && pwdToggle) {
+    if (pwdInput && pwdToggle && !pwdToggle.__bound) {
+      pwdToggle.__bound = true;
       pwdToggle.addEventListener("click", function () {
         var isPwd = pwdInput.type === "password";
         pwdInput.type = isPwd ? "text" : "password";
@@ -171,7 +169,8 @@
 
     // Bind login form submit
     var form = document.getElementById("nz-login-form");
-    if (form) {
+    if (form && !form.__bound) {
+      form.__bound = true;
       form.addEventListener("submit", handleLoginSubmit);
     }
   }
@@ -480,9 +479,18 @@
     } catch (_e) {}
     var hasStorageToken = !!storageToken;
 
+    // If visiting with ?redirect= pointing to dashboard, auto-forward to destination
+    try {
+      var searchParams = new URLSearchParams(window.location.search);
+      var redir = searchParams.get("redirect");
+      if (redir && redir.startsWith("/") && redir.indexOf("/dashboard") !== -1) {
+        window.location.replace(redir);
+        return;
+      }
+    } catch (_e) {}
+
     var isExplicitLogin = window.location.pathname.indexOf("/login") !== -1 ||
       (new URLSearchParams(window.location.search)).has("login") ||
-      (new URLSearchParams(window.location.search)).has("redirect") ||
       window.__forceAuthGate === true;
 
     // If no credentials exist anywhere, definitely not logged in

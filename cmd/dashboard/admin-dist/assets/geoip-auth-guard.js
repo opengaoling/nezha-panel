@@ -126,24 +126,25 @@
 
   function loginTarget() {
     var prefix = getSecretPrefix();
-    var current = window.location.pathname + window.location.search;
-    return (prefix || "") + "/?redirect=" + encodeURIComponent(current);
+    return (prefix || "") + "/dashboard/login";
   }
 
   function redirectForAuth() {
+    if (window.location.pathname.indexOf("/dashboard/login") !== -1) return;
     if (redirected) return;
     redirected = true;
     clearAuthStorage();
     var target = loginTarget();
-    if (window.location.pathname + window.location.search !== target) {
+    if (window.location.pathname !== target) {
       window.location.replace(target);
     }
   }
 
   function shouldRedirect(response) {
     if (!response) return false;
+    if (window.location.pathname.indexOf("/dashboard/login") !== -1) return false;
     if (response.headers && response.headers.get(authHeader) === "1") return true;
-    if (response.status === 401) return true;
+    if (response.status === 401 && hasSessionCookie()) return true;
     if (response.status === 404 && hasSessionCookie()) return true;
     return false;
   }

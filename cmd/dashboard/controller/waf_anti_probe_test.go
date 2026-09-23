@@ -311,19 +311,19 @@ func TestSecretPathProtectionAndRouting(t *testing.T) {
 	assert.Equal(t, http.StatusMovedPermanently, wDashLower.Code)
 	assert.Equal(t, "/"+secret+"/dashboard/", wDashLower.Header().Get("Location"))
 
-	// 3e. GET /{secret}/dashboard/ (unauthenticated) -> 302 redirect to /{secret}/?redirect=/{secret}/dashboard/
+	// 3e. GET /{secret}/dashboard/ (unauthenticated, with valid secret) -> 200 OK "dashboard-ok"
 	reqDashUnauth := httptest.NewRequest("GET", "/"+secret+"/dashboard/", nil)
 	wDashUnauth := httptest.NewRecorder()
 	handler.ServeHTTP(wDashUnauth, reqDashUnauth)
-	assert.Equal(t, http.StatusFound, wDashUnauth.Code)
-	assert.Equal(t, "/"+secret+"/?redirect=/"+secret+"/dashboard/", wDashUnauth.Header().Get("Location"))
+	assert.Equal(t, http.StatusOK, wDashUnauth.Code)
+	assert.Equal(t, "dashboard-ok", wDashUnauth.Body.String())
 
-	// 3e2. GET /{secret}/dashboard/service (unauthenticated) -> 302 redirect to /{secret}/?redirect=/{secret}/dashboard/service
+	// 3e2. GET /{secret}/dashboard/service (unauthenticated, with valid secret) -> 200 OK "dashboard-ok"
 	reqDashSubUnauth := httptest.NewRequest("GET", "/"+secret+"/dashboard/service", nil)
 	wDashSubUnauth := httptest.NewRecorder()
 	handler.ServeHTTP(wDashSubUnauth, reqDashSubUnauth)
-	assert.Equal(t, http.StatusFound, wDashSubUnauth.Code)
-	assert.Equal(t, "/"+secret+"/?redirect=/"+secret+"/dashboard/service", wDashSubUnauth.Header().Get("Location"))
+	assert.Equal(t, http.StatusOK, wDashSubUnauth.Code)
+	assert.Equal(t, "dashboard-ok", wDashSubUnauth.Body.String())
 
 	// 3f. GET /{secret}/dashboard/ (authenticated with nz-jwt) -> 200 OK "dashboard-ok"
 	reqDashAuth := httptest.NewRequest("GET", "/"+secret+"/dashboard/", nil)

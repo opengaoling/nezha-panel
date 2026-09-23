@@ -148,8 +148,7 @@ func initAntiProbeWAF(mw *jwt.GinJWTMiddleware) {
 			return true
 		}
 
-		// 3. If client has valid secret cookie/header, allow admin login and static assets;
-		// redirect /dashboard/ to login gate for seamless login UX.
+		// 3. If client has valid secret cookie/header, allow admin dashboard, public APIs, and static assets
 		secret := ""
 		if singleton.Conf != nil {
 			secret = strings.Trim(singleton.Conf.SecretPath, "/")
@@ -158,27 +157,14 @@ func initAntiProbeWAF(mw *jwt.GinJWTMiddleware) {
 			cookie, err := c.Cookie(SecretPathCookieName)
 			hasSecret := (err == nil && cookie == secret) || c.GetHeader(SecretPathHeaderName) == secret
 			if hasSecret {
-				// Allow public frontend APIs, settings, and server stream for legitimate secret path visitors
+				// Allow public frontend APIs, settings, profile check, and server stream for legitimate secret path visitors
 				if path == "/api/v1/setting" || path == "/api/v1/ws/server" || path == "/api/v1/server-group" ||
-					path == "/api/v1/service" || strings.HasPrefix(path, "/api/v1/service/") ||
+					path == "/api/v1/service" || path == "/api/v1/profile" || strings.HasPrefix(path, "/api/v1/service/") ||
 					strings.HasPrefix(path, "/api/v1/server/") || strings.HasPrefix(path, "/server/") {
 					return true
 				}
-				if strings.HasPrefix(path, "/dashboard/assets/") || path == "/dashboard/login" {
+				if strings.HasPrefix(path, "/dashboard") {
 					return true
-				}
-				if c.Request.Method == http.MethodGet && strings.HasPrefix(path, "/dashboard") {
-					normalizedPath := path
-					if normalizedPath == "/dashboard" {
-						normalizedPath = "/dashboard/"
-					}
-					redirectTarget := "/" + secret + "/?redirect=" + "/" + secret + normalizedPath
-					if c.Request.URL.RawQuery != "" {
-						redirectTarget += "?" + c.Request.URL.RawQuery
-					}
-					c.Redirect(http.StatusFound, redirectTarget)
-					c.Abort()
-					return false
 				}
 			}
 		}
