@@ -14,18 +14,18 @@
     return src + "?v=" + version;
   }
 
-  function appendScript(src) {
-    var script = document.createElement("script");
-    script.src = versioned(src);
-    script.async = false;
-    document.head.appendChild(script);
+  function loadScripts() {
+    scripts.forEach(function (src) {
+      var script = document.createElement("script");
+      script.src = versioned(src);
+      script.defer = true;
+      document.head.appendChild(script);
+    });
   }
 
   if (document.readyState === "loading") {
-    document.write(scripts.map(function (src) {
-      return '<script src="' + versioned(src) + '"><\/script>';
-    }).join(""));
+    document.addEventListener("DOMContentLoaded", loadScripts, { once: true });
   } else {
-    scripts.forEach(appendScript);
+    loadScripts();
   }
 })();

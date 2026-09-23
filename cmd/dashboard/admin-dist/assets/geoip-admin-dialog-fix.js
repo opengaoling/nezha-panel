@@ -73,6 +73,7 @@
   }
 
   function markDialogs() {
+    if (!document.body) return;
     var active = false;
     var dialogs = document.querySelectorAll('#root [role="dialog"]');
 

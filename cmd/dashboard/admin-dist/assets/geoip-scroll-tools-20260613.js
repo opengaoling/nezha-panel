@@ -109,6 +109,7 @@
   }
 
   function mount() {
+    if (!document.body) return;
     var tools = document.getElementById("geoip-scroll-tools");
     if (!tools) {
       tools = document.createElement("div");
