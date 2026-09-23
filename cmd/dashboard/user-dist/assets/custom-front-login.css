@@ -1,5 +1,5 @@
 /**
- * Nezha Monitoring - Custom Access Gateway Login
+ * Security Access Gateway Login
  * Exclusive Modern Cyber-Glassmorphic Login UI
  * Designed for user-dist frontend
  */
@@ -9,7 +9,7 @@ html.nz-force-auth:not(.nz-authenticated) #root {
   display: none !important;
 }
 
-html.nz-authenticated #nz-login-gate {
+html.nz-authenticated #nz-login-gate:not(.nz-gate-animating) {
   display: none !important;
 }
 

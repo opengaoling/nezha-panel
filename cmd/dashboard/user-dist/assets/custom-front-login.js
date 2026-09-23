@@ -1,5 +1,5 @@
 /**
- * Nezha Monitoring - Custom Access Gateway Login Controller
+ * Security Access Gateway Login Controller
  * Exclusive Modern Cyber-Glassmorphic Login UI
  * Handles authentication gating, session verification, login submission,
  * and user dashboard logout integration.
@@ -13,19 +13,39 @@
   var AUTH_COOKIE_NAME = "nz-jwt";
   var CSRF_COOKIE_NAME = "nz-csrf";
   var THEME_STORAGE_KEY = "vite-ui-theme";
-  var USER_STORAGE_KEY = "nezha-user-profile";
-  var SAVED_USER_KEY = "nezha-saved-username";
+  var USER_STORAGE_KEY = "nz-user-profile";
+  var SAVED_USER_KEY = "nz-saved-username";
 
-  // Immediately activate nz-force-auth if unauthenticated to present the WAF disguise gate
+  // Immediately activate nz-force-auth if unauthenticated to present the security disguise gate
   try {
     var preCookie = !!(document.cookie && document.cookie.indexOf(AUTH_COOKIE_NAME + "=") !== -1);
     var preToken = false;
     try {
-      preToken = !!(localStorage.getItem("token") || localStorage.getItem("nezha-token") || localStorage.getItem("jwt"));
+      preToken = !!(localStorage.getItem("token") || localStorage.getItem("jwt"));
     } catch (_e) {}
-    if (!preCookie && !preToken) {
+    if (preCookie || preToken) {
+      document.documentElement.classList.add("nz-authenticated");
+      document.documentElement.classList.remove("nz-force-auth");
+      document.title = "系统监控中心 · System Dashboard";
+    } else {
       document.documentElement.classList.add("nz-force-auth");
       document.documentElement.classList.remove("nz-authenticated");
+      document.title = "安全访问网关 · Security Gateway";
+    }
+  } catch (_e) {}
+
+  // Enforce branding-free title while unauthenticated
+  try {
+    var titleEl = document.querySelector("title");
+    if (titleEl && window.MutationObserver) {
+      var titleObs = new MutationObserver(function () {
+        if (!document.documentElement.classList.contains("nz-authenticated")) {
+          if (document.title !== "安全访问网关 · Security Gateway") {
+            document.title = "安全访问网关 · Security Gateway";
+          }
+        }
+      });
+      titleObs.observe(titleEl, { childList: true, characterData: true, subtree: true });
     }
   } catch (_e) {}
 
@@ -76,12 +96,13 @@
     } catch (_e) {}
     try {
       localStorage.removeItem("token");
-      localStorage.removeItem("nezha-token");
       localStorage.removeItem("jwt");
       localStorage.removeItem(USER_STORAGE_KEY);
+      localStorage.removeItem("nezha-user-profile");
+      localStorage.removeItem("nezha-token");
       sessionStorage.removeItem("token");
-      sessionStorage.removeItem("nezha-token");
       sessionStorage.removeItem("jwt");
+      sessionStorage.removeItem("nezha-token");
     } catch (_e) {}
   }
 
@@ -229,16 +250,16 @@
       '        </svg>',
       '      </div>',
       '    </div>',
-      '    <h1 class="nz-brand-title">哪吒监控</h1>',
-      '    <div class="nz-brand-subtitle">NEZHA DASHBOARD · 访问网关</div>',
+      '    <h1 class="nz-brand-title">安全访问网关</h1>',
+      '    <div class="nz-brand-subtitle">SECURITY ACCESS GATEWAY · 访问控制</div>',
       '    <div class="nz-gateway-badge">',
       '      <span class="nz-pulse-dot"></span>',
-      '      <span>身份认证网关已就绪</span>',
+      '      <span>安全认证网关已就绪</span>',
       '    </div>',
       '  </div>',
       '  <div class="nz-alert nz-alert-error" id="nz-alert-error">',
       '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
-      '    <span id="nz-error-text">用户名或密码错误</span>',
+      '    <span id="nz-error-text">访问账号或访问凭证错误</span>',
       '  </div>',
       '  <div class="nz-alert nz-alert-success" id="nz-alert-success">',
       '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
@@ -246,21 +267,21 @@
       '  </div>',
       '  <form class="nz-form" id="nz-login-form" autocomplete="on">',
       '    <div class="nz-field-group">',
-      '      <label class="nz-label" for="nz-username">用户名 / 账号</label>',
+      '      <label class="nz-label" for="nz-username">访问账号</label>',
       '      <div class="nz-input-wrap">',
       '        <div class="nz-input-icon">',
       '          <svg viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
       '        </div>',
-      '        <input type="text" id="nz-username" class="nz-input" placeholder="请输入面板账号" required autocomplete="username" spellcheck="false" />',
+      '        <input type="text" id="nz-username" class="nz-input" placeholder="请输入访问账号" required autocomplete="username" spellcheck="false" />',
       '      </div>',
       '    </div>',
       '    <div class="nz-field-group">',
-      '      <label class="nz-label" for="nz-password">访问密码</label>',
+      '      <label class="nz-label" for="nz-password">访问凭证</label>',
       '      <div class="nz-input-wrap">',
       '        <div class="nz-input-icon">',
       '          <svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
       '        </div>',
-      '        <input type="password" id="nz-password" class="nz-input" placeholder="请输入面板密码" required autocomplete="current-password" />',
+      '        <input type="password" id="nz-password" class="nz-input" placeholder="请输入访问凭证" required autocomplete="current-password" />',
       '        <button type="button" class="nz-pwd-toggle" id="nz-pwd-toggle" aria-label="Toggle Password Visibility">',
       '          <svg id="nz-eye-icon" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
       '        </button>',
@@ -269,21 +290,21 @@
       '    <div class="nz-form-options">',
       '      <label class="nz-remember-label">',
       '        <input type="checkbox" id="nz-remember-check" class="nz-remember-checkbox" />',
-      '        <span>记住账号</span>',
+      '        <span>保持登录状态</span>',
       '      </label>',
       '      <a href="/dashboard/" class="nz-admin-link">',
-      '        <span>管理后台</span>',
+      '        <span>控制台</span>',
       '        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>',
       '      </a>',
       '    </div>',
       '    <button type="submit" class="nz-submit-btn" id="nz-submit-btn">',
       '      <span class="nz-spinner"></span>',
-      '      <span class="nz-btn-text">登 录 进 入</span>',
+      '      <span class="nz-btn-text">身 份 验 证</span>',
       '    </button>',
       '  </form>',
       '  <div class="nz-card-footer">',
-      '    <div>哪吒监控系统 · 安全身份认证网关</div>',
-      '    <div style="opacity: 0.6; margin-top: 2px;">End-to-End Encrypted Session</div>',
+      '    <div>统一访问网关 · 安全身份控制系统</div>',
+      '    <div style="opacity: 0.6; margin-top: 2px;">End-to-End Encrypted Security Gateway</div>',
       '  </div>',
       '</div>'
     ].join("\n");
@@ -380,7 +401,6 @@
         if (token) {
           try {
             localStorage.setItem("token", token);
-            localStorage.setItem("nezha-token", token);
             localStorage.setItem("jwt", token);
           } catch (_e) {}
         }
@@ -394,34 +414,55 @@
         // Unlock gate with smooth transition
         setTimeout(function () {
           unlockGateAndEnter();
-        }, 500);
+        }, 400);
       })
       .catch(function (err) {
-        showError("登录网络错误: " + (err.message || "请求失败"));
+        showError("验证网络错误: " + (err.message || "请求失败"));
       });
   }
 
-  // Unlock gate and reveal dashboard
+  // Unlock gate and reveal dashboard smoothly without reloading
   function unlockGateAndEnter() {
+    document.documentElement.classList.remove("nz-force-auth");
     document.documentElement.classList.add("nz-authenticated");
+    document.title = "系统监控中心 · System Dashboard";
+
     var gate = document.getElementById("nz-login-gate");
     if (gate) {
+      gate.classList.add("nz-gate-animating");
+      gate.style.transition = "opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1), transform 0.35s ease";
       gate.style.opacity = "0";
+      gate.style.transform = "scale(0.98)";
       gate.style.pointerEvents = "none";
       setTimeout(function () {
         if (gate.parentNode) gate.parentNode.removeChild(gate);
       }, 400);
     }
+
     try {
       var params = new URLSearchParams(window.location.search);
       var target = params.get("redirect");
       if (target && target.startsWith("/")) {
-        window.location.href = target;
+        window.location.assign(target);
         return;
       }
     } catch (_e) {}
-    // Reload cleanly to initialize React TanStack Query & WebSocket with session cookies
-    window.location.reload();
+
+    // Mount authenticated status pill
+    try {
+      var saved = localStorage.getItem(USER_STORAGE_KEY);
+      var parsed = saved ? JSON.parse(saved) : null;
+      var uname = (parsed && parsed.username) || "管理员";
+      mountDashboardUserPill(uname);
+    } catch (_e) {
+      mountDashboardUserPill("管理员");
+    }
+
+    // Wake up React TanStack Query and window listeners
+    try {
+      window.dispatchEvent(new Event("focus"));
+      window.dispatchEvent(new Event("resize"));
+    } catch (_e) {}
   }
 
   // Mount Dashboard User Status Pill & Logout Button
@@ -446,9 +487,9 @@
         '<div class="nz-pill-avatar">' + avatarLetter + '</div>',
         '<span class="nz-pill-user" title="' + displayName + '">' + displayName + '</span>',
         '<div class="nz-pill-actions">',
-        '  <a href="' + dashUrl + '" class="nz-pill-btn" title="进入管理后台">',
+        '  <a href="' + dashUrl + '" class="nz-pill-btn" title="进入控制台">',
         '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
-        '    <span>后台</span>',
+        '    <span>控制台</span>',
         '  </a>',
         '  <button type="button" class="nz-pill-btn nz-pill-logout" id="nz-logout-btn" title="退出登录">',
         '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
@@ -488,7 +529,7 @@
     var hasCookie = !!getCookie(AUTH_COOKIE_NAME);
     var storageToken = "";
     try {
-      storageToken = localStorage.getItem("token") || localStorage.getItem("nezha-token") || localStorage.getItem("jwt") || "";
+      storageToken = localStorage.getItem("token") || localStorage.getItem("jwt") || "";
     } catch (_e) {}
     var hasStorageToken = !!storageToken;
 
@@ -502,14 +543,11 @@
       }
     } catch (_e) {}
 
-    var isExplicitLogin = window.location.pathname.indexOf("/login") !== -1 ||
-      (new URLSearchParams(window.location.search)).has("login") ||
-      window.__forceAuthGate === true;
-
-    // If no credentials exist anywhere, definitely not logged in -> activate front WAF login disguise
+    // If no credentials exist anywhere, definitely not logged in -> activate front disguise gate
     if (!hasCookie && !hasStorageToken) {
       document.documentElement.classList.remove("nz-authenticated");
       document.documentElement.classList.add("nz-force-auth");
+      document.title = "安全访问网关 · Security Gateway";
       ensureLoginGateDOM();
       return;
     }
@@ -529,10 +567,14 @@
         if (res.ok) {
           return res.json();
         }
-        throw new Error("Unauthorized");
+        if (res.status === 401) {
+          throw new Error("Unauthorized");
+        }
+        return null;
       })
       .then(function (profileRes) {
-        if (profileRes && profileRes.success) {
+        if (!profileRes) return;
+        if (profileRes.success) {
           // If there was a redirect URL waiting, navigate there now
           try {
             var params = new URLSearchParams(window.location.search);
@@ -546,22 +588,24 @@
           // Session is fully verified & active!
           document.documentElement.classList.add("nz-authenticated");
           document.documentElement.classList.remove("nz-force-auth");
+          document.title = "系统监控中心 · System Dashboard";
           var gate = document.getElementById("nz-login-gate");
           if (gate && gate.parentNode) {
             gate.parentNode.removeChild(gate);
           }
           var uname = (profileRes.data && profileRes.data.username) || "管理员";
           mountDashboardUserPill(uname);
-        } else {
-          throw new Error("Invalid profile response");
         }
       })
-      .catch(function () {
-        // Session invalid or expired: clear and show front WAF login disguise
-        clearAuthSession();
-        document.documentElement.classList.remove("nz-authenticated");
-        document.documentElement.classList.add("nz-force-auth");
-        ensureLoginGateDOM();
+      .catch(function (err) {
+        if (err && err.message === "Unauthorized") {
+          // Session invalid or expired: clear and show security gate
+          clearAuthSession();
+          document.documentElement.classList.remove("nz-authenticated");
+          document.documentElement.classList.add("nz-force-auth");
+          document.title = "安全访问网关 · Security Gateway";
+          ensureLoginGateDOM();
+        }
       });
   }
 
@@ -575,6 +619,18 @@
 
   function initGate() {
     bindGateEvents();
+    try {
+      var hasCookie = !!getCookie(AUTH_COOKIE_NAME);
+      var storageToken = "";
+      try {
+        storageToken = localStorage.getItem("token") || localStorage.getItem("jwt") || "";
+      } catch (_e) {}
+      if (hasCookie || storageToken) {
+        var preSaved = localStorage.getItem(USER_STORAGE_KEY);
+        var preParsed = preSaved ? JSON.parse(preSaved) : null;
+        mountDashboardUserPill((preParsed && preParsed.username) || "管理员");
+      }
+    } catch (_e) {}
     verifySession();
   }
 
