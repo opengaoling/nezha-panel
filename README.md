@@ -1,117 +1,179 @@
 <div align="center">
   <br>
-  <img width="360" style="max-width:80%" src=".github/brand.svg" title="哪吒监控 Nezha Monitoring">
+  <h1>🚀 哪吒监控定制安全增强版</h1>
+  <p><b>基于 Nezha Monitoring 重构与安全加固 · 内置现代科技风主题 · 全前置 WAF 防探测 · 8位随机路径隐匿</b></p>
   <br>
-  <small><i>LOGO designed by <a href="https://xio.ng" target="_blank">熊大</a> .</i></small>
-  <br><br>
-<img alt="GitHub release (with filter)" src="https://img.shields.io/github/v/release/nezhahq/nezha?color=brightgreen&style=for-the-badge&logo=github&label=Dashboard">&nbsp;<img src="https://img.shields.io/github/v/release/nezhahq/agent?color=brightgreen&label=Agent&style=for-the-badge&logo=github">&nbsp;<img src="https://img.shields.io/github/actions/workflow/status/nezhahq/agent/agent.yml?label=Agent%20CI&logo=github&style=for-the-badge">&nbsp;<a href="https://hosted.weblate.org/engage/nezha/"><img src="https://img.shields.io/weblate/progress/nezha?color=brightgreen&label=Translated&style=for-the-badge&logo=weblate" alt="Translation status" /></a>
-  <br>
-  <br>
-  <p>:trollface: <b>Nezha Monitoring: Self-hostable, lightweight, servers and websites monitoring and O&M tool.</b></p>
-  <p>Supports <b>monitoring</b> system status, HTTP (SSL certificate change, upcoming expiration, expired), TCP, Ping and supports <b>push alerts</b>, run scheduled tasks and <b>web terminal</b>.</p>
 </div>
 
-\>> Telegram Channel: [哪吒监控（中文通知频道）](https://t.me/nezhanews)<br>
-\>> Telegram Group: [Nezha Monitoring Global (English Only)](https://t.me/nezhamonitoring_global), [哪吒监控（中文群组）](https://t.me/nezhamonitoring)
+---
 
-\>> [Use Cases | 我们的用户](https://www.google.com/search?q=%22%E5%93%AA%E5%90%92%E7%9B%91%E6%8E%A7+Nezha+Monitoring%22) (Google) <br>
+## 🌟 核心特性
 
+- 🎨 **内置现代科技风磨砂玻璃主题**：无需独立部署前端或子模块依赖，前端资源（`user-dist` 与 `admin-dist`）直接内嵌于面板中，预渲染技术杜绝白屏与 FOUC 闪烁。
+- 🔐 **前置访问身份网关**：未登录用户在进入监控主界面前必须登录，账号密码与面板完全统一，支持记住账号凭据与平滑动画解锁。
+- 🛡️ **前置 WAF 防探测加固（Anti-Probe WAF）**：未登录前直接探测任何内部路径（包括 `/dashboard`、`/dashboard/*`、`/api/v1/*`、`/mcp`、`/swagger`、`/debug/pprof` 等），服务端一律返回纯文本 `404 page not found`，彻底杜绝指纹泄露与扫描器探测。
+- 🔒 **8 位随机大小写英文字母防探测路径（`SecretPath`）**：
+  - 全站隐匿在 8 位随机英文字母前缀下（例如：`domain.com/jjjjjjxf/Dashboard`、`domain.com/jjjjjjxf/`）。
+  - **自动生成与持久化**：首次启动若未设置，系统自动通过安全随机源生成 8 位英文字母并保存至 `config.yaml`。
+  - **大小写全兼容**：支持 `/Dashboard` 与 `/dashboard` 访问，未登录访问后台自动重定向至登录界面，登录成功后自动跳转回目标后台。
+  - **无感安全会话**：通过专属路径访问时自动下发 `nz-secret-path` Cookie，后续所有的 SPA 资源请求、API 调用与 WebSocket 数据流均畅行无阻。
 
-## User Guide
+---
 
-- [English](https://nezhahq.github.io/en_US/index.html)
-- [中文文档](https://nezhahq.github.io/index.html)
+## 📦 部署教程
 
-## Contributing
+### 方式一：Docker Compose 部署（强烈推荐）
 
-### Translation
+#### 1. 创建项目目录
+```bash
+mkdir -p /opt/nezha-dashboard && cd /opt/nezha-dashboard
+```
 
-<a href="https://hosted.weblate.org/engage/nezha/">
-<img src="https://hosted.weblate.org/widget/nezha/multi-blue.svg" alt="Translation status" />
-</a>
+#### 2. 编写 `docker-compose.yaml`
+在当前目录下创建 `docker-compose.yaml` 文件：
 
-Is Nezha not in your language, or the translation is incorrect or incomplete? Get involved in the translations on [Hosted Weblate](https://hosted.weblate.org/engage/nezha/).
+```yaml
+version: '3.8'
 
-## Screenshots
+services:
+  nezha-dashboard:
+    image: ghcr.io/opengaoling/nezha-panel:latest
+    container_name: nezha-dashboard
+    restart: always
+    ports:
+      - "8008:8008"   # Web 面板端口与 Agent gRPC 通信端口
+    environment:
+      - TZ=Asia/Shanghai
+      # 可选：自定义固定 8 位防探测字母路径（不填则首次启动自动随机生成）
+      # - NEZHA_SECRET_PATH=jjjjjjxf
+    volumes:
+      - ./data:/dashboard/data
+```
 
-| 用户前台 [@hamster1963](https://github.com/hamster1963) | 管理后台 [@nezhahq](https://github.com/nezhahq) |
-|---|---|
-| ![user](.github/user-frontend.20241128.png)  | ![admin](.github/admin-frontend.20241220.jpg)  |
-| [hamster1963/nezha-dash](https://github.com/hamster1963/nezha-dash)  | [nezhahq/admin-frontend](https://github.com/nezhahq/admin-frontend)  |
+#### 3. 启动面板
+```bash
+docker compose up -d
+```
 
-add your theme to [service/singleton/frontend-templates.yaml](service/singleton/frontend-templates.yaml)
+#### 4. 查看生成的防探测访问路径
+首次启动时，面板会自动生成 8 位防探测英文路径，通过查看容器日志即可获取：
+```bash
+docker compose logs -f
+```
+日志中会输出如下提示：
+```text
+NEZHA>> generated new secret_path: /jjjjjjxf (access panel via /jjjjjjxf/ or /jjjjjjxf/Dashboard)
+```
 
-## Contributors
+#### 5. 首次登录与配置
+1. 在浏览器中打开：`http://<你的服务器IP>:8008/<8位随机路径>/Dashboard`（例如 `http://1.2.3.4:8008/jjjjjjxf/Dashboard`）。
+2. 若系统为初始安装，默认管理员账号密码为：
+   - 用户名：`admin`
+   - 密　码：`admin`
+3. 登录成功后，请立即进入 **后台管理 -> 系统设置** 修改密码，确保服务器安全。
 
-<!--GAMFC_DELIMITER--><a href="https://github.com/naiba" title="naiba"><img src="https://avatars.githubusercontent.com/u/29243953?v=4" width="50;" alt="naiba"/></a>
-<a href="https://github.com/uubulb" title="UUBulb"><img src="https://avatars.githubusercontent.com/u/35923940?v=4" width="50;" alt="UUBulb"/></a>
-<a href="https://github.com/AkkiaS7" title="Akkia"><img src="https://avatars.githubusercontent.com/u/68485070?v=4" width="50;" alt="Akkia"/></a>
-<a href="https://github.com/matchch" title="卖女孩的小火柴"><img src="https://avatars.githubusercontent.com/u/44471469?v=4" width="50;" alt="卖女孩的小火柴"/></a>
-<a href="https://github.com/nap0o" title="nap0o"><img src="https://avatars.githubusercontent.com/u/144927971?v=4" width="50;" alt="nap0o"/></a>
-<a href="https://github.com/dysf888" title="黑歌"><img src="https://avatars.githubusercontent.com/u/47450409?v=4" width="50;" alt="黑歌"/></a>
-<a href="https://github.com/xykt" title="xykt"><img src="https://avatars.githubusercontent.com/u/152045469?v=4" width="50;" alt="xykt"/></a>
-<a href="https://github.com/weblate" title="Weblate (bot)"><img src="https://avatars.githubusercontent.com/u/1607653?v=4" width="50;" alt="Weblate (bot)"/></a>
-<a href="https://github.com/MikoyChinese" title="MikoyChinese"><img src="https://avatars.githubusercontent.com/u/22676744?v=4" width="50;" alt="MikoyChinese"/></a>
-<a href="https://github.com/JackieSung4ev" title="JackieSung4ev"><img src="https://avatars.githubusercontent.com/u/24974735?v=4" width="50;" alt="JackieSung4ev"/></a>
-<a href="https://github.com/cantoblanco" title="Kris"><img src="https://avatars.githubusercontent.com/u/116849421?v=4" width="50;" alt="Kris"/></a>
-<a href="https://github.com/lemoeo" title="Lemoe"><img src="https://avatars.githubusercontent.com/u/18618627?v=4" width="50;" alt="Lemoe"/></a>
-<a href="https://github.com/spiritLHLS" title="spiritlhl"><img src="https://avatars.githubusercontent.com/u/103393591?v=4" width="50;" alt="spiritlhl"/></a>
-<a href="https://github.com/liuyanxi975" title="刘颜溪"><img src="https://avatars.githubusercontent.com/u/24417037?v=4" width="50;" alt="刘颜溪"/></a>
-<a href="https://github.com/CosmosZ-code" title="CosmosZ-code"><img src="https://avatars.githubusercontent.com/u/81398224?v=4" width="50;" alt="CosmosZ-code"/></a>
-<a href="https://github.com/lvgj-stack" title="Ko no dio"><img src="https://avatars.githubusercontent.com/u/38449861?v=4" width="50;" alt="Ko no dio"/></a>
-<a href="https://github.com/hhhkkk520" title="Kris"><img src="https://avatars.githubusercontent.com/u/52115472?v=4" width="50;" alt="Kris"/></a>
-<a href="https://github.com/Mmx233" title="Mmx233"><img src="https://avatars.githubusercontent.com/u/36563672?v=4" width="50;" alt="Mmx233"/></a>
-<a href="https://github.com/rootmelo92118" title="rootmelo92118"><img src="https://avatars.githubusercontent.com/u/32770959?v=4" width="50;" alt="rootmelo92118"/></a>
-<a href="https://github.com/Moraxyc" title="Moraxyc Xu"><img src="https://avatars.githubusercontent.com/u/69713071?v=4" width="50;" alt="Moraxyc Xu"/></a>
-<a href="https://github.com/1ridic" title="1ridic"><img src="https://avatars.githubusercontent.com/u/88495501?v=4" width="50;" alt="1ridic"/></a>
-<a href="https://github.com/hamster1963" title="仓鼠"><img src="https://avatars.githubusercontent.com/u/71394853?v=4" width="50;" alt="仓鼠"/></a>
-<a href="https://github.com/zhucaidan" title="zhucaidan"><img src="https://avatars.githubusercontent.com/u/47970938?v=4" width="50;" alt="zhucaidan"/></a>
-<a href="https://github.com/iilemon" title="Sean"><img src="https://avatars.githubusercontent.com/u/33201711?v=4" width="50;" alt="Sean"/></a>
-<a href="https://github.com/lyj0309" title="lyj"><img src="https://avatars.githubusercontent.com/u/50474995?v=4" width="50;" alt="lyj"/></a>
-<a href="https://github.com/fscarmen" title="fscarmen"><img src="https://avatars.githubusercontent.com/u/62703343?v=4" width="50;" alt="fscarmen"/></a>
-<a href="https://github.com/ch8o" title="windingFlame"><img src="https://avatars.githubusercontent.com/u/9103372?v=4" width="50;" alt="windingFlame"/></a>
-<a href="https://github.com/MemoryShadow" title="JSker9"><img src="https://avatars.githubusercontent.com/u/31596045?v=4" width="50;" alt="JSker9"/></a>
-<a href="https://github.com/HsukqiLee" title="Hsukqi Lee"><img src="https://avatars.githubusercontent.com/u/79034142?v=4" width="50;" alt="Hsukqi Lee"/></a>
-<a href="https://github.com/DarcJC" title="Darc Z."><img src="https://avatars.githubusercontent.com/u/53445798?v=4" width="50;" alt="Darc Z."/></a>
-<a href="https://github.com/Creling" title="Creling"><img src="https://avatars.githubusercontent.com/u/43109504?v=4" width="50;" alt="Creling"/></a>
-<a href="https://github.com/coreff" title="Core F"><img src="https://avatars.githubusercontent.com/u/38347122?v=4" width="50;" alt="Core F"/></a>
-<a href="https://github.com/wellcoming" title="Coming"><img src="https://avatars.githubusercontent.com/u/74850890?v=4" width="50;" alt="Coming"/></a>
-<a href="https://github.com/acgpiano" title="Acgpiano"><img src="https://avatars.githubusercontent.com/u/15900800?v=4" width="50;" alt="Acgpiano"/></a>
-<a href="https://github.com/eya46" title="eya46"><img src="https://avatars.githubusercontent.com/u/61458340?v=4" width="50;" alt="eya46"/></a>
-<a href="https://github.com/guoyongchang" title="guoyongchang"><img src="https://avatars.githubusercontent.com/u/10484506?v=4" width="50;" alt="guoyongchang"/></a>
-<a href="https://github.com/hiDandelion" title="Yoshihiro Miyamoto"><img src="https://avatars.githubusercontent.com/u/77157418?v=4" width="50;" alt="Yoshihiro Miyamoto"/></a>
-<a href="https://github.com/honeok" title="honeok"><img src="https://avatars.githubusercontent.com/u/100125733?v=4" width="50;" alt="honeok"/></a>
-<a href="https://github.com/yuanweize" title="IYUANWEIZE"><img src="https://avatars.githubusercontent.com/u/30067203?v=4" width="50;" alt="IYUANWEIZE"/></a>
-<a href="https://github.com/igophper" title="igophper"><img src="https://avatars.githubusercontent.com/u/34326532?v=4" width="50;" alt="igophper"/></a>
-<a href="https://github.com/lvyaoting" title="lvyaoting"><img src="https://avatars.githubusercontent.com/u/166296299?v=4" width="50;" alt="lvyaoting"/></a>
-<a href="https://github.com/quanljh" title="quanljh"><img src="https://avatars.githubusercontent.com/u/38105306?v=4" width="50;" alt="quanljh"/></a>
-<a href="https://github.com/unclezs" title="unclezs"><img src="https://avatars.githubusercontent.com/u/42318775?v=4" width="50;" alt="unclezs"/></a>
-<a href="https://github.com/ysicing" title="缘生"><img src="https://avatars.githubusercontent.com/u/8605565?v=4" width="50;" alt="缘生"/></a>
-<a href="https://github.com/zhdsmy" title="zhdsmy"><img src="https://avatars.githubusercontent.com/u/8348149?v=4" width="50;" alt="zhdsmy"/></a>
-<a href="https://github.com/yanhao98" title="严浩"><img src="https://avatars.githubusercontent.com/u/37316281?v=4" width="50;" alt="严浩"/></a>
-<a href="https://github.com/arkylin" title="凌"><img src="https://avatars.githubusercontent.com/u/35104502?v=4" width="50;" alt="凌"/></a>
-<a href="https://github.com/yumusb" title="榆木"><img src="https://avatars.githubusercontent.com/u/43062104?v=4" width="50;" alt="榆木"/></a>
-<a href="https://github.com/colour93" title="93"><img src="https://avatars.githubusercontent.com/u/64313711?v=4" width="50;" alt="93"/></a>
-<a href="https://github.com/wwng2333" title=":D"><img src="https://avatars.githubusercontent.com/u/17147265?v=4" width="50;" alt=":D"/></a>
-<a href="https://github.com/Es-dese" title="Esdese"><img src="https://avatars.githubusercontent.com/u/71542548?v=4" width="50;" alt="Esdese"/></a>
-<a href="https://github.com/GreenTeodoro839" title="YiPing Zhang"><img src="https://avatars.githubusercontent.com/u/77104800?v=4" width="50;" alt="YiPing Zhang"/></a>
-<a href="https://github.com/techotaku" title="Ian Li"><img src="https://avatars.githubusercontent.com/u/1948179?v=4" width="50;" alt="Ian Li"/></a>
-<a href="https://github.com/KorenKrita" title="KorenKrita"><img src="https://avatars.githubusercontent.com/u/22239339?v=4" width="50;" alt="KorenKrita"/></a>
-<a href="https://github.com/funnyzak" title="Leon"><img src="https://avatars.githubusercontent.com/u/2562087?v=4" width="50;" alt="Leon"/></a>
-<a href="https://github.com/MartijnLindeman" title="Martijn Lindeman"><img src="https://avatars.githubusercontent.com/u/78365708?v=4" width="50;" alt="Martijn Lindeman"/></a>
-<a href="https://github.com/silver-ymz" title="Mingzhuo Yin"><img src="https://avatars.githubusercontent.com/u/78400701?v=4" width="50;" alt="Mingzhuo Yin"/></a>
-<a href="https://github.com/dreamingsleeping" title="Nanjing Hopefun Network Technology Co. Ltd."><img src="https://avatars.githubusercontent.com/u/13828658?v=4" width="50;" alt="Nanjing Hopefun Network Technology Co. Ltd."/></a>
-<a href="https://github.com/NikoCat233" title="NikoCat233"><img src="https://avatars.githubusercontent.com/u/139348239?v=4" width="50;" alt="NikoCat233"/></a>
-<a href="https://github.com/Septrum101" title="Spetrum"><img src="https://avatars.githubusercontent.com/u/11692994?v=4" width="50;" alt="Spetrum"/></a>
-<a href="https://github.com/IamTaoChen" title="Tao Chen"><img src="https://avatars.githubusercontent.com/u/42793494?v=4" width="50;" alt="Tao Chen"/></a>
-<a href="https://github.com/nickfox-taterli" title="Tater Li"><img src="https://avatars.githubusercontent.com/u/19658596?v=4" width="50;" alt="Tater Li"/></a>
-<a href="https://github.com/TomyJan" title="TomyJan"><img src="https://avatars.githubusercontent.com/u/67973160?v=4" width="50;" alt="TomyJan"/></a>
-<a href="https://github.com/hmsjy2017" title="Tony"><img src="https://avatars.githubusercontent.com/u/42692274?v=4" width="50;" alt="Tony"/></a>
-<a href="https://github.com/adminsama" title="adminsama"><img src="https://avatars.githubusercontent.com/u/60880076?v=4" width="50;" alt="adminsama"/></a><!--GAMFC_DELIMITER_END-->
+---
 
-## Special Thanks
-- [IPInfo](https://ipinfo.io/) for providing an accurate GeoIP Database.
+### 方式二：Docker CLI 直接运行
 
-## Star History
+如果习惯使用单行命令运行，可直接执行：
 
-[![Star History Chart](https://api.star-history.com/svg?repos=nezhahq/nezha&type=Timeline)](https://star-history.com/#nezhahq/nezha&Timeline)
+```bash
+docker run -d \
+  --name nezha-dashboard \
+  --restart always \
+  -p 8008:8008 \
+  -e TZ=Asia/Shanghai \
+  -v /opt/nezha-dashboard/data:/dashboard/data \
+  ghcr.io/opengaoling/nezha-panel:latest
+```
+
+查看随机访问路径：
+```bash
+docker logs nezha-dashboard
+```
+
+---
+
+### 方式三：反向代理与域名 SSL 配置
+
+为面板绑定域名并配置 SSL 证书时，需注意开启 **WebSocket** 支持与 **gRPC** 兼容。
+
+#### Nginx 配置示例
+```nginx
+server {
+    listen 80;
+    server_name monitor.yourdomain.com;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name monitor.yourdomain.com;
+
+    ssl_certificate /path/to/fullchain.cer;
+    ssl_certificate_key /path/to/private.key;
+
+    # 传递真实客户端 IP
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    # WebSocket 支持
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+
+    location / {
+        proxy_pass http://127.0.0.1:8008;
+    }
+}
+```
+
+#### Caddy 配置示例
+```caddy
+monitor.yourdomain.com {
+    reverse_proxy 127.0.0.1:8008
+}
+```
+
+---
+
+## ⚙️ 核心配置说明
+
+所有面板配置保存在挂载目录的 `data/config.yaml` 中，支持热重载或重启生效：
+
+| 配置项 | 环境变量 | 说明 | 示例 |
+| :--- | :--- | :--- | :--- |
+| `secret_path` | `NEZHA_SECRET_PATH` | 8 位随机英文路径防探测前缀 | `jjjjjjxf` |
+| `listen_port` | - | 面板服务监听端口 | `8008` |
+| `agent_secret_key` | - | Agent 通信连接密钥 | 在后台管理界面配置 |
+| `jwt_timeout` | - | 登录 Token 过期有效时长（小时） | `24` |
+| `force_auth` | - | 是否强制要求全局认证 | `true` |
+
+---
+
+## 🖥️ 被控端（Agent）接入指南
+
+在需要被监控的客户端服务器上，执行一键接入命令：
+
+```bash
+curl -L https://raw.githubusercontent.com/nezhahq/scripts/main/agent/install.sh -o nezha.sh && chmod +x nezha.sh
+./nezha.sh install_agent <面板域名或IP> 8008 <Agent通信密钥>
+```
+
+> **提示**：如果面板配置了反向代理，请确保反代服务（如 Nginx/Cloudflare）放行了 gRPC 通信或将 Agent 通信端口直连宿主机的 8008 端口。
+
+---
+
+## 🛡️ 防探测安全机制说明
+
+1. **直接探测防护**：
+   - 任何未通过 8 位秘密路径或无安全 Cookie 的客户端，访问 `domain.com/`、`domain.com/dashboard`、`domain.com/api/v1/setting` 等，均直接返回 `404 page not found`，对全网扫描器（如 Shodan、Censys、FOFA）完全隐匿。
+2. **凭据隔离**：
+   - 必须通过 `domain.com/<8位字母>/` 或 `domain.com/<8位字母>/Dashboard` 访问。
+   - 访问一次有效秘密路径后，浏览器将自动保存安全 Cookie，后续正常使用无需反复输入随机前缀。
+3. **安全建议**：
+   - 首次部署完成后，建议在管理后台重命名管理员账号并设置强密码。
+   - 防探测路径（8 位随机字母）请妥善保存，切勿公开泄露。

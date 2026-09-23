@@ -23,9 +23,14 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     -o /dashboard/app ./cmd/dashboard
 
 FROM scratch
+WORKDIR /dashboard
 COPY --from=builder /dashboard/app /dashboard/app
 COPY --from=builder /src/cmd/dashboard/admin-dist /dashboard/admin-dist
 COPY --from=builder /src/cmd/dashboard/user-dist /dashboard/user-dist
 COPY --from=builder /src/cmd/dashboard/admin-dist /dashboard/default-frontend/admin-dist
 COPY --from=builder /src/cmd/dashboard/user-dist /dashboard/default-frontend/user-dist
 COPY --from=builder /etc/ssl/certs /etc/ssl/certs
+
+VOLUME ["/dashboard/data"]
+EXPOSE 8008
+ENTRYPOINT ["/dashboard/app"]
