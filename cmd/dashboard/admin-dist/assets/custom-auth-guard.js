@@ -126,18 +126,20 @@
 
   function loginTarget() {
     var prefix = getSecretPrefix();
-    return (prefix || "") + "/dashboard/login";
+    return (prefix || "") + "/?redirect=" + encodeURIComponent(window.location.pathname + window.location.search);
   }
 
   function redirectForAuth() {
-    if (window.location.pathname.indexOf("/dashboard/login") !== -1) return;
+    // If we're already on the WAF gateway or login page, don't loop
+    var path = window.location.pathname;
+    if (path.indexOf("/dashboard/login") !== -1) return;
+    var suffix = path.split("/").pop();
+    if (suffix === "" || suffix === "login") return;
     if (redirected) return;
     redirected = true;
     clearAuthStorage();
     var target = loginTarget();
-    if (window.location.pathname !== target) {
-      window.location.replace(target);
-    }
+    window.location.replace(target);
   }
 
   function shouldRedirect(response) {

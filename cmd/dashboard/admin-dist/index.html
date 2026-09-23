@@ -2,10 +2,34 @@
 <html lang="en">
     <head>
         <meta charset="UTF-8" />
-        <link rel="shortcut icon" type="image/svg+xml" href="/dashboard/logo.svg?v=admin-assets-20260617b" />
+        <link rel="shortcut icon" type="image/svg+xml" href="/dashboard/logo.svg?v=admin-assets-20260923c" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>控制台管理系统 · Console Dashboard</title>
-      <script type="module" crossorigin src="/dashboard/assets/index-custom-admin.js"></script>
+        <script>
+          // Early WAF gate: redirect unauthenticated visitors back to the security gateway
+          ;(function(){
+            try {
+              var hasJwt = document.cookie.indexOf('nz-jwt=') !== -1;
+              var hasToken = false;
+              try { hasToken = !!(localStorage.getItem('token') || localStorage.getItem('jwt')); } catch(_){}
+              if (!hasJwt && !hasToken) {
+                var p = '';
+                var ck = document.cookie.match(/nz-secret-path=([^;]+)/);
+                if (ck && ck[1]) { p = '/' + decodeURIComponent(ck[1].trim()); }
+                else {
+                  var parts = window.location.pathname.split('/').filter(Boolean);
+                  if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0]) && !/^(dashboard|settings|terminal|transfer)$/i.test(parts[0])) {
+                    p = '/' + parts[0];
+                  } else {
+                    try { var s = localStorage.getItem('nz-secret-path'); if (s && /^[a-zA-Z]{8}$/.test(s)) p = '/' + s; } catch(_) {}
+                  }
+                }
+                window.location.replace((p || '') + '/?redirect=' + encodeURIComponent(window.location.pathname + window.location.search));
+              }
+            } catch(_) {}
+          })();
+        </script>
+        <script type="module" crossorigin src="/dashboard/assets/index-custom-admin.js"></script>
       <link rel="modulepreload" crossorigin href="/dashboard/assets/rolldown-runtime-Cyuzqnbw.js">
       <link rel="modulepreload" crossorigin href="/dashboard/assets/data-Ct8zKa_c.js">
       <link rel="modulepreload" crossorigin href="/dashboard/assets/react-CcQYHe1I.js">
