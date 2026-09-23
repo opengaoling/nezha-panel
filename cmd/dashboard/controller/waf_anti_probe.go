@@ -75,6 +75,7 @@ func secretPathHandler(next http.Handler) http.Handler {
 				MaxAge:   30 * 86400,
 				SameSite: http.SameSiteLaxMode,
 			})
+			r.Header.Set(SecretPathHeaderName, secret)
 		}
 
 		// Normalize & rewrite request path
