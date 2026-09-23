@@ -63,6 +63,8 @@ func setupAntiProbeWAFTest(t *testing.T) (*gin.Engine, *jwt.GinJWTMiddleware, fu
 	r.GET("/dashboard/", func(c *gin.Context) { c.String(http.StatusOK, "dashboard-ok") })
 	r.GET("/dashboard/login", func(c *gin.Context) { c.String(http.StatusOK, "dashboard-login-ok") })
 	r.GET("/dashboard/service", func(c *gin.Context) { c.String(http.StatusOK, "dashboard-service-ok") })
+	r.GET("/dashboard/service/", func(c *gin.Context) { c.String(http.StatusOK, "dashboard-service-ok") })
+	r.GET("/api/v1/oauth2/callback", func(c *gin.Context) { c.String(http.StatusOK, "oauth2-callback-ok") })
 	r.GET("/api/v1/profile", func(c *gin.Context) { c.String(http.StatusOK, "profile-ok") })
 	r.GET("/api/v1/server", func(c *gin.Context) { c.String(http.StatusOK, "server-ok") })
 	r.POST("/mcp", func(c *gin.Context) { c.String(http.StatusOK, "mcp-ok") })
@@ -387,8 +389,8 @@ func TestSecretPathProtectionAndRouting(t *testing.T) {
 	reqOAuthCallback := httptest.NewRequest("GET", "/api/v1/oauth2/callback", nil)
 	wOAuthCallback := httptest.NewRecorder()
 	handler.ServeHTTP(wOAuthCallback, reqOAuthCallback)
-	// Handled by router (returns 404 from Gin router because route not registered in mock, not anti-probe plaintext 404)
-	assert.NotEqual(t, "404 page not found\n", wOAuthCallback.Body.String(), "OAuth2 callback must pass secretPathHandler")
+	assert.Equal(t, http.StatusOK, wOAuthCallback.Code)
+	assert.Equal(t, "oauth2-callback-ok", wOAuthCallback.Body.String())
 
 	// 7. Legitimate secret path access to /server and /dashboard/service/
 	reqDashServiceTrailingSlash := httptest.NewRequest("GET", "/"+secret+"/dashboard/service/", nil)
