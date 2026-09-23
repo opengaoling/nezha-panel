@@ -98,12 +98,31 @@
     } catch (_e) {}
   }
 
+  function getSecretPrefix() {
+    try {
+      var parts = window.location.pathname.split("/").filter(Boolean);
+      if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
+        return "/" + parts[0];
+      }
+      var prefix = "nz-secret-path=";
+      var cookieParts = document.cookie ? document.cookie.split(";") : [];
+      for (var i = 0; i < cookieParts.length; i++) {
+        var part = cookieParts[i].trim();
+        if (part.indexOf(prefix) === 0) {
+          return "/" + decodeURIComponent(part.substring(prefix.length));
+        }
+      }
+    } catch (_e) {}
+    return "";
+  }
+
   function loginTarget() {
-    return window.location.pathname.indexOf("/dashboard") === 0 ? "/dashboard/login" : "/";
+    var prefix = getSecretPrefix();
+    return window.location.pathname.indexOf("/dashboard") !== -1 ? prefix + "/dashboard/login" : prefix + "/";
   }
 
   function redirectForAuth() {
-    if (window.location.pathname.indexOf("/dashboard") !== 0) {
+    if (window.location.pathname.indexOf("/dashboard") === -1) {
       clearAuthStorage();
       try {
         window.dispatchEvent(new CustomEvent("nz:auth-required"));

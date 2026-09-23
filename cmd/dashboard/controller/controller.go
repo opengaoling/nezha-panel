@@ -435,12 +435,14 @@ func fallbackToFrontend(frontendDist fs.FS) func(*gin.Context) {
 			if err != nil {
 				return false
 			}
+			bustedContent := cacheBustHTML(content)
 			c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
 			c.Header("Pragma", "no-cache")
 			c.Header("Expires", "0")
 			c.Header("Content-Type", "text/html; charset=utf-8")
+			c.Header("Content-Length", strconv.Itoa(len(bustedContent)))
 			c.Status(customStatusCode)
-			_, err = c.Writer.Write(cacheBustHTML(content))
+			_, err = c.Writer.Write(bustedContent)
 			return err == nil
 		}
 		readSeeker, ok := file.(io.ReadSeeker)

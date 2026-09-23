@@ -2,12 +2,31 @@
   if (window.__geoipDashboardLinkFixInstalled) return;
   window.__geoipDashboardLinkFixInstalled = true;
 
+  function getSecretPrefix() {
+    try {
+      var parts = window.location.pathname.split("/").filter(Boolean);
+      if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
+        return "/" + parts[0];
+      }
+      var prefix = "nz-secret-path=";
+      var cookieParts = document.cookie ? document.cookie.split(";") : [];
+      for (var i = 0; i < cookieParts.length; i++) {
+        var part = cookieParts[i].trim();
+        if (part.indexOf(prefix) === 0) {
+          return "/" + decodeURIComponent(part.substring(prefix.length));
+        }
+      }
+    } catch (_e) {}
+    return "";
+  }
+
   function sameOriginUrl(path) {
     return new URL(path, window.location.origin).href;
   }
 
   function dashboardUrl() {
-    return sameOriginUrl("/dashboard");
+    var prefix = getSecretPrefix();
+    return sameOriginUrl(prefix ? prefix + "/dashboard/" : "/dashboard/");
   }
 
   function isDashboardEntryUrl(url) {

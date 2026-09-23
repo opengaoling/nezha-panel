@@ -148,21 +148,26 @@ func initAntiProbeWAF(mw *jwt.GinJWTMiddleware) {
 			return true
 		}
 
-		// 3. If client is visiting /dashboard/ in browser and has valid secret cookie/header,
-		// redirect to login gate rather than 404 to provide seamless login UX.
+		// 3. If client has valid secret cookie/header, allow admin login and static assets;
+		// redirect /dashboard/ to login gate for seamless login UX.
 		secret := ""
 		if singleton.Conf != nil {
 			secret = strings.Trim(singleton.Conf.SecretPath, "/")
 		}
-		if secret != "" && c.Request.Method == http.MethodGet &&
-			strings.HasPrefix(path, "/dashboard/") &&
-			!strings.HasPrefix(path, "/dashboard/assets/") {
+		if secret != "" {
 			cookie, err := c.Cookie(SecretPathCookieName)
-			if (err == nil && cookie == secret) || c.GetHeader(SecretPathHeaderName) == secret {
-				redirectTarget := "/" + secret + "/?redirect=" + "/" + secret + "/dashboard/"
-				c.Redirect(http.StatusFound, redirectTarget)
-				c.Abort()
-				return false
+			hasSecret := (err == nil && cookie == secret) || c.GetHeader(SecretPathHeaderName) == secret
+			if hasSecret {
+				if strings.HasPrefix(path, "/dashboard/assets/") || path == "/dashboard/login" {
+					return true
+				}
+				if c.Request.Method == http.MethodGet &&
+					(strings.EqualFold(path, "/dashboard/") || strings.EqualFold(path, "/dashboard")) {
+					redirectTarget := "/" + secret + "/?redirect=" + "/" + secret + "/dashboard/"
+					c.Redirect(http.StatusFound, redirectTarget)
+					c.Abort()
+					return false
+				}
 			}
 		}
 
@@ -203,11 +208,6 @@ func isPublicPath(p, method string) bool {
 
 	// Public OAuth2 initiation and callback (GET only)
 	if strings.HasPrefix(p, "/api/v1/oauth2") && method == http.MethodGet {
-		return true
-	}
-
-	// Public frontend settings for guests (site title, language, custom code)
-	if p == "/api/v1/setting" && method == http.MethodGet {
 		return true
 	}
 

@@ -9,7 +9,6 @@
   var scripts = [
     "/assets/geoip-dashboard-link-fix-20260614.js",
     "/assets/geoip-auth-guard.js",
-    "/assets/geoip-front-login.js",
     "/assets/geoip-overview-status-highlight.js",
     "/assets/geoip-desktop-layout-loader-20260613c.js",
     "/assets/geoip-scroll-tools.js"
@@ -19,19 +18,18 @@
     return src + "?v=" + version;
   }
 
-  function appendScript(src) {
-    var script = document.createElement("script");
-    script.src = versioned(src);
-    script.async = false;
-    document.head.appendChild(script);
+  function loadScripts() {
+    scripts.forEach(function (src) {
+      var script = document.createElement("script");
+      script.src = versioned(src);
+      script.defer = true;
+      document.head.appendChild(script);
+    });
   }
 
   if (document.readyState === "loading") {
-    document.write(scripts.map(function (src) {
-      return '<script src="' + versioned(src) + '"><\/script>';
-    }).join(""));
-    return;
+    document.addEventListener("DOMContentLoaded", loadScripts);
+  } else {
+    loadScripts();
   }
-
-  scripts.forEach(appendScript);
 })();
