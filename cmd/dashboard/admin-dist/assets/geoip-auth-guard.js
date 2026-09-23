@@ -98,8 +98,36 @@
     } catch (_e) {}
   }
 
+  function getSecretPrefix() {
+    try {
+      var prefix = "nz-secret-path=";
+      var cookieParts = document.cookie ? document.cookie.split(";") : [];
+      for (var i = 0; i < cookieParts.length; i++) {
+        var part = cookieParts[i].trim();
+        if (part.indexOf(prefix) === 0) {
+          var val = decodeURIComponent(part.substring(prefix.length)).trim();
+          if (val) return "/" + val;
+        }
+      }
+      var parts = window.location.pathname.split("/").filter(Boolean);
+      if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
+        var first = parts[0].toLowerCase();
+        if (first !== "settings" && first !== "terminal" && first !== "transfer") {
+          return "/" + parts[0];
+        }
+      }
+      var stored = localStorage.getItem("nz-secret-path");
+      if (stored && /^[a-zA-Z]{8}$/.test(stored)) {
+        return "/" + stored;
+      }
+    } catch (_e) {}
+    return "";
+  }
+
   function loginTarget() {
-    return window.location.pathname.indexOf("/dashboard") === 0 ? "/dashboard/login" : "/";
+    var prefix = getSecretPrefix();
+    var current = window.location.pathname + window.location.search;
+    return (prefix || "") + "/?redirect=" + encodeURIComponent(current);
   }
 
   function redirectForAuth() {
@@ -116,8 +144,27 @@
     if (!response) return false;
     if (response.headers && response.headers.get(authHeader) === "1") return true;
     if (response.status === 401) return true;
+    if (response.status === 404 && hasSessionCookie()) return true;
     return false;
   }
+
+  function fixHomeLinks() {
+    var prefix = getSecretPrefix();
+    if (!prefix) return;
+    var links = document.querySelectorAll('a[href="/"]');
+    for (var i = 0; i < links.length; i++) {
+      links[i].setAttribute("href", prefix + "/");
+    }
+  }
+
+  try {
+    var detectedPrefix = getSecretPrefix();
+    if (detectedPrefix) {
+      var rawSec = detectedPrefix.replace(/^\//, "");
+      localStorage.setItem("nz-secret-path", rawSec);
+      document.cookie = "nz-secret-path=" + rawSec + "; path=/; Max-Age=2592000; SameSite=Lax";
+    }
+  } catch (_e) {}
 
   var nativeFetch = window.fetch;
   if (typeof nativeFetch === "function") {
@@ -183,4 +230,16 @@
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) maybeKeepAlive();
   });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", fixHomeLinks, { once: true });
+  } else {
+    fixHomeLinks();
+  }
+  if (typeof MutationObserver !== "undefined") {
+    var observer = new MutationObserver(function () {
+      fixHomeLinks();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
 })();

@@ -161,9 +161,15 @@ func initAntiProbeWAF(mw *jwt.GinJWTMiddleware) {
 				if strings.HasPrefix(path, "/dashboard/assets/") || path == "/dashboard/login" {
 					return true
 				}
-				if c.Request.Method == http.MethodGet &&
-					(strings.EqualFold(path, "/dashboard/") || strings.EqualFold(path, "/dashboard")) {
-					redirectTarget := "/" + secret + "/?redirect=" + "/" + secret + "/dashboard/"
+				if c.Request.Method == http.MethodGet && strings.HasPrefix(path, "/dashboard") {
+					normalizedPath := path
+					if normalizedPath == "/dashboard" {
+						normalizedPath = "/dashboard/"
+					}
+					redirectTarget := "/" + secret + "/?redirect=" + "/" + secret + normalizedPath
+					if c.Request.URL.RawQuery != "" {
+						redirectTarget += "?" + c.Request.URL.RawQuery
+					}
 					c.Redirect(http.StatusFound, redirectTarget)
 					c.Abort()
 					return false

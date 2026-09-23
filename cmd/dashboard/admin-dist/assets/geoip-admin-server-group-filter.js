@@ -39,7 +39,7 @@
 
   function isServerPage() {
     var path = window.location.pathname.replace(/\/+$/, "");
-    return path === "/dashboard";
+    return path === "/dashboard" || path.endsWith("/dashboard");
   }
 
   function requestGroups() {

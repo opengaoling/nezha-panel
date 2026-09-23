@@ -34,11 +34,24 @@
   // Helper: Secret path prefix detection
   function getSecretPrefix() {
     var secretCookie = getCookie("nz-secret-path");
-    if (secretCookie) return "/" + encodeURIComponent(secretCookie);
+    if (secretCookie) {
+      try { localStorage.setItem("nz-secret-path", secretCookie); } catch (_e) {}
+      return "/" + encodeURIComponent(secretCookie);
+    }
     var parts = window.location.pathname.split("/").filter(Boolean);
     if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
-      return "/" + parts[0];
+      var first = parts[0].toLowerCase();
+      if (first !== "settings" && first !== "terminal" && first !== "transfer") {
+        try { localStorage.setItem("nz-secret-path", parts[0]); } catch (_e) {}
+        return "/" + parts[0];
+      }
     }
+    try {
+      var stored = localStorage.getItem("nz-secret-path");
+      if (stored && /^[a-zA-Z]{8}$/.test(stored)) {
+        return "/" + stored;
+      }
+    } catch (_e) {}
     return "";
   }
 
@@ -408,8 +421,8 @@
       var target = document.body || document.documentElement;
       if (!target) return;
 
-      var secretCookie = getCookie("nz-secret-path");
-      var dashUrl = secretCookie ? "/" + encodeURIComponent(secretCookie) + "/dashboard/" : "/dashboard/";
+      var prefix = getSecretPrefix();
+      var dashUrl = prefix ? prefix + "/dashboard/" : "/dashboard/";
 
       var pill = document.createElement("div");
       pill.id = "nz-auth-pill";

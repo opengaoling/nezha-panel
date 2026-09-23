@@ -25,7 +25,8 @@
   var fetchPatched = false;
 
   function isDashboard() {
-    return /^\/dashboard(?:\/|$)/.test(window.location.pathname.replace(/\/+$/, ""));
+    var path = window.location.pathname.replace(/\/+$/, "");
+    return /(?:^|\/)dashboard(?:\/|$)/.test(path);
   }
 
   function cookieValue(name) {

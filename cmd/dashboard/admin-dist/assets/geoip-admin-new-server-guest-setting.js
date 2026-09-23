@@ -10,7 +10,8 @@
   var settingConfig = null;
 
   function isSettingsPage() {
-    return window.location.pathname === "/dashboard/settings";
+    var path = window.location.pathname.replace(/\/+$/, "");
+    return path === "/dashboard/settings" || path.endsWith("/dashboard/settings");
   }
 
   function cookieValue(name) {

@@ -88,7 +88,8 @@
 
   function insertField() {
     if (document.getElementById(fieldId)) return;
-    if (window.location.pathname !== "/dashboard/settings") return;
+    var path = window.location.pathname.replace(/\/+$/, "");
+    if (path !== "/dashboard/settings" && !path.endsWith("/dashboard/settings")) return;
 
     var customDashboardLabel = Array.from(document.querySelectorAll("label")).find(function (label) {
       return /CustomCodesDashboard|仪表板的自定义代码|自定义代码/.test(label.textContent || "");

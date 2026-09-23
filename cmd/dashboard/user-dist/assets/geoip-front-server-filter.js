@@ -123,7 +123,8 @@
   }
 
   function isHomePage() {
-    return window.location.pathname === "/";
+    var path = window.location.pathname.replace(/\/+$/, "") || "/";
+    return path === "/" || /^\/[a-zA-Z]{8}$/.test(path);
   }
 
   function facetLabel(value) {

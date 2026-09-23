@@ -318,6 +318,13 @@ func TestSecretPathProtectionAndRouting(t *testing.T) {
 	assert.Equal(t, http.StatusFound, wDashUnauth.Code)
 	assert.Equal(t, "/"+secret+"/?redirect=/"+secret+"/dashboard/", wDashUnauth.Header().Get("Location"))
 
+	// 3e2. GET /{secret}/dashboard/service (unauthenticated) -> 302 redirect to /{secret}/?redirect=/{secret}/dashboard/service
+	reqDashSubUnauth := httptest.NewRequest("GET", "/"+secret+"/dashboard/service", nil)
+	wDashSubUnauth := httptest.NewRecorder()
+	handler.ServeHTTP(wDashSubUnauth, reqDashSubUnauth)
+	assert.Equal(t, http.StatusFound, wDashSubUnauth.Code)
+	assert.Equal(t, "/"+secret+"/?redirect=/"+secret+"/dashboard/service", wDashSubUnauth.Header().Get("Location"))
+
 	// 3f. GET /{secret}/dashboard/ (authenticated with nz-jwt) -> 200 OK "dashboard-ok"
 	reqDashAuth := httptest.NewRequest("GET", "/"+secret+"/dashboard/", nil)
 	reqDashAuth.AddCookie(&http.Cookie{Name: "nz-jwt", Value: token})
