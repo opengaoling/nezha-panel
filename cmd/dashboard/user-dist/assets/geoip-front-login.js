@@ -16,6 +16,19 @@
   var USER_STORAGE_KEY = "nezha-user-profile";
   var SAVED_USER_KEY = "nezha-saved-username";
 
+  // Immediately activate nz-force-auth if unauthenticated to present the WAF disguise gate
+  try {
+    var preCookie = !!(document.cookie && document.cookie.indexOf(AUTH_COOKIE_NAME + "=") !== -1);
+    var preToken = false;
+    try {
+      preToken = !!(localStorage.getItem("token") || localStorage.getItem("nezha-token") || localStorage.getItem("jwt"));
+    } catch (_e) {}
+    if (!preCookie && !preToken) {
+      document.documentElement.classList.add("nz-force-auth");
+      document.documentElement.classList.remove("nz-authenticated");
+    }
+  } catch (_e) {}
+
   // Helper: Cookie extraction
   function getCookie(name) {
     try {
@@ -493,13 +506,11 @@
       (new URLSearchParams(window.location.search)).has("login") ||
       window.__forceAuthGate === true;
 
-    // If no credentials exist anywhere, definitely not logged in
+    // If no credentials exist anywhere, definitely not logged in -> activate front WAF login disguise
     if (!hasCookie && !hasStorageToken) {
       document.documentElement.classList.remove("nz-authenticated");
-      if (isExplicitLogin) {
-        document.documentElement.classList.add("nz-force-auth");
-        ensureLoginGateDOM();
-      }
+      document.documentElement.classList.add("nz-force-auth");
+      ensureLoginGateDOM();
       return;
     }
 
@@ -546,13 +557,11 @@
         }
       })
       .catch(function () {
-        // Session invalid or expired: clear and show login gate only if explicit login
+        // Session invalid or expired: clear and show front WAF login disguise
         clearAuthSession();
         document.documentElement.classList.remove("nz-authenticated");
-        if (isExplicitLogin) {
-          document.documentElement.classList.add("nz-force-auth");
-          ensureLoginGateDOM();
-        }
+        document.documentElement.classList.add("nz-force-auth");
+        ensureLoginGateDOM();
       });
   }
 
@@ -560,10 +569,8 @@
   window.addEventListener("nz:auth-required", function () {
     clearAuthSession();
     document.documentElement.classList.remove("nz-authenticated");
-    if (window.location.pathname.indexOf("/login") !== -1 || window.__forceAuthGate === true) {
-      document.documentElement.classList.add("nz-force-auth");
-      ensureLoginGateDOM();
-    }
+    document.documentElement.classList.add("nz-force-auth");
+    ensureLoginGateDOM();
   });
 
   function initGate() {

@@ -149,10 +149,27 @@
     return false;
   }
 
+  function handleHomeClick(e) {
+    var a = e.target && (e.target.tagName === "A" ? e.target : e.target.closest("a"));
+    if (!a) return;
+    var href = a.getAttribute("href");
+    var isHome = href === "/" || href === "" || (a.pathname === "/" && a.origin === window.location.origin);
+    if (isHome) {
+      var prefix = getSecretPrefix();
+      if (prefix) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        window.location.href = prefix + "/";
+      }
+    }
+  }
+  document.addEventListener("click", handleHomeClick, true);
+
   function fixHomeLinks() {
     var prefix = getSecretPrefix();
     if (!prefix) return;
-    var links = document.querySelectorAll('a[href="/"]');
+    var links = document.querySelectorAll('a[href="/"], a[href=""]');
     for (var i = 0; i < links.length; i++) {
       links[i].setAttribute("href", prefix + "/");
     }
