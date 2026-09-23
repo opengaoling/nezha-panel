@@ -18,6 +18,7 @@ type SettingForm struct {
 	UserTemplate                string `json:"user_template,omitempty" validate:"optional"`
 	JWTTimeout                  *int   `json:"jwt_timeout,omitempty" validate:"optional"` // JWT token过期时间（小时，至少24小时）
 	HideNewServersForGuest     *bool  `json:"hide_new_servers_for_guest,omitempty" validate:"optional"`
+	SecretPath                  *string `json:"secret_path,omitempty" validate:"optional"` // 8位随机大小写英文字母防探测路径前缀
 
 	AgentTLS                    bool `json:"tls,omitempty" validate:"optional"`
 	EnableIPChangeNotification  bool `json:"enable_ip_change_notification,omitempty" validate:"optional"`

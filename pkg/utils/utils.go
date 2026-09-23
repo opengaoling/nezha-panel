@@ -93,6 +93,28 @@ func MustGenerateRandomString(n int) string {
 	return str
 }
 
+func GenerateRandomLetterString(n int) (string, error) {
+	const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	lettersLength := big.NewInt(int64(len(letters)))
+	ret := make([]byte, n)
+	for i := range n {
+		num, err := rand.Int(rand.Reader, lettersLength)
+		if err != nil {
+			return "", err
+		}
+		ret[i] = letters[num.Int64()]
+	}
+	return string(ret), nil
+}
+
+func MustGenerateRandomLetterString(n int) string {
+	str, err := GenerateRandomLetterString(n)
+	if err != nil {
+		panic(fmt.Errorf("MustGenerateRandomLetterString: %v", err))
+	}
+	return str
+}
+
 func IfOr[T any](a bool, x, y T) T {
 	if a {
 		return x

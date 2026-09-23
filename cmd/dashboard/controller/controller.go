@@ -48,7 +48,7 @@ func ServeWeb(frontendDist fs.FS) http.Handler {
 
 	kickoffTransferGC()
 
-	return r
+	return secretPathHandler(r)
 }
 
 func routers(r *gin.Engine, frontendDist fs.FS) {

@@ -122,6 +122,9 @@ func updateConfig(c *gin.Context) (any, error) {
 	if sf.HideNewServersForGuest != nil {
 		singleton.Conf.HideNewServersForGuest = *sf.HideNewServersForGuest
 	}
+	if sf.SecretPath != nil {
+		singleton.Conf.SecretPath = strings.Trim(strings.TrimSpace(*sf.SecretPath), "/")
+	}
 	mcpWasEnabled := singleton.Conf.MCPEnabled()
 	mcpNext := resolveSettingEnableMCP(sf.EnableMCP, mcpWasEnabled)
 

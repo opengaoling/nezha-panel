@@ -362,6 +362,14 @@
         if (gate.parentNode) gate.parentNode.removeChild(gate);
       }, 400);
     }
+    try {
+      var params = new URLSearchParams(window.location.search);
+      var target = params.get("redirect");
+      if (target && target.startsWith("/")) {
+        window.location.href = target;
+        return;
+      }
+    } catch (_e) {}
     // Reload cleanly to initialize React TanStack Query & WebSocket with session cookies
     window.location.reload();
   }
@@ -369,6 +377,9 @@
   // Mount Dashboard User Status Pill & Logout Button
   function mountDashboardUserPill(username) {
     if (document.getElementById("nz-auth-pill")) return;
+
+    var secretCookie = getCookie("nz-secret-path");
+    var dashUrl = secretCookie ? "/" + encodeURIComponent(secretCookie) + "/dashboard/" : "/dashboard/";
 
     var pill = document.createElement("div");
     pill.id = "nz-auth-pill";
@@ -380,7 +391,7 @@
       '<div class="nz-pill-avatar">' + avatarLetter + '</div>',
       '<span class="nz-pill-user" title="' + displayName + '">' + displayName + '</span>',
       '<div class="nz-pill-actions">',
-      '  <a href="/dashboard/" class="nz-pill-btn" title="进入管理后台">',
+      '  <a href="' + dashUrl + '" class="nz-pill-btn" title="进入管理后台">',
       '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
       '    <span>后台</span>',
       '  </a>',
@@ -392,6 +403,11 @@
     ].join("");
 
     document.body.appendChild(pill);
+
+    var adminLinks = document.querySelectorAll(".nz-admin-link");
+    for (var i = 0; i < adminLinks.length; i++) {
+      adminLinks[i].setAttribute("href", dashUrl);
+    }
 
     var logoutBtn = document.getElementById("nz-logout-btn");
     if (logoutBtn) {

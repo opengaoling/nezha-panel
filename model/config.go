@@ -79,6 +79,7 @@ type ConfigDashboard struct {
 	IgnoredIPNotification       string `koanf:"ignored_ip_notification" json:"ignored_ip_notification,omitempty"` // 特定服务器IP（多个服务器用逗号分隔）
 
 	DNSServers string `koanf:"dns_servers" json:"dns_servers,omitempty"`
+	SecretPath string `koanf:"secret_path" json:"secret_path,omitempty"` // 8位随机大小写英文字母防探测路径前缀
 }
 
 type Config struct {
@@ -262,6 +263,21 @@ func (c *Config) Read(path string, frontendTemplates []FrontendTemplate) error {
 		if err = c.Save(); err != nil {
 			return err
 		}
+	}
+
+	if envSecretPath := os.Getenv("NEZHA_SECRET_PATH"); envSecretPath != "" {
+		c.SecretPath = strings.Trim(envSecretPath, "/")
+	}
+	if c.SecretPath == "" {
+		if gen, err := utils.GenerateRandomLetterString(8); err == nil {
+			c.SecretPath = gen
+			if c.filePath != "" {
+				_ = c.Save()
+			}
+			log.Printf("NEZHA>> generated new secret_path: /%s (access panel via /%s/ or /%s/Dashboard)", gen, gen, gen)
+		}
+	} else {
+		c.SecretPath = strings.Trim(c.SecretPath, "/")
 	}
 
 	c.mcpEnabled.Store(c.EnableMCP)

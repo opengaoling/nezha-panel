@@ -3,6 +3,7 @@ package controller
 import (
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"testing"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/nezhahq/nezha/cmd/dashboard/controller/waf"
 	"github.com/nezhahq/nezha/model"
 	"github.com/nezhahq/nezha/pkg/idcodec"
+	"github.com/nezhahq/nezha/pkg/utils"
 	"github.com/nezhahq/nezha/service/singleton"
 )
 
@@ -187,6 +189,170 @@ func TestAntiProbeWAFAuthenticatedAccessAllowed(t *testing.T) {
 	reqPAT.Header.Set("Authorization", "Bearer "+patPlaintext)
 	wPAT := httptest.NewRecorder()
 	r.ServeHTTP(wPAT, reqPAT)
+	assert.Equal(t, http.StatusOK, wPAT.Code)
+	assert.Equal(t, "server-ok", wPAT.Body.String())
+}
+
+func TestSecretPathRandomLetterGeneration(t *testing.T) {
+	letterRegex := regexp.MustCompile(`^[a-zA-Z]{8}$`)
+	for i := 0; i < 50; i++ {
+		gen, err := utils.GenerateRandomLetterString(8)
+		require.NoError(t, err)
+		assert.Len(t, gen, 8)
+		assert.True(t, letterRegex.MatchString(gen), "generated string %s must contain only uppercase and lowercase English letters", gen)
+	}
+}
+
+func TestSecretPathProtectionAndRouting(t *testing.T) {
+	r, authMw, cleanup := setupAntiProbeWAFTest(t)
+	defer cleanup()
+
+	const secret = "jjjjjjxf"
+	singleton.Conf.SecretPath = secret
+
+	handler := secretPathHandler(r)
+
+	// Create test user and auth token for testing authenticated requests
+	user := model.User{
+		Common:       model.Common{ID: 2},
+		Username:     "admin2",
+		TokenVersion: 1,
+	}
+	require.NoError(t, singleton.DB.Create(&user).Error)
+
+	sessData, err := issueJWTSession(&gin.Context{Request: httptest.NewRequest("GET", "/", nil)}, &user, 1)
+	require.NoError(t, err)
+
+	token, _, err := authMw.TokenGenerator(sessData)
+	require.NoError(t, err)
+
+	patPlaintext := "nzp_secretpat1234567890abcdef"
+	tok := model.APIToken{
+		Common:    model.Common{ID: 20},
+		UserID:    user.ID,
+		Name:      "ci-secret-pat",
+		TokenHash: model.HashAPIToken(patPlaintext),
+		ExpiresAt: time.Now().Add(time.Hour),
+	}
+	require.NoError(t, singleton.DB.Create(&tok).Error)
+
+	// 1. Probing without secret path / cookie / PAT MUST return 404
+	unauthProbes := []string{
+		"/",
+		"/dashboard",
+		"/Dashboard",
+		"/dashboard/",
+		"/api/v1/profile",
+		"/api/v1/login",
+		"/assets/app.js",
+		"/favicon.ico",
+	}
+	for _, p := range unauthProbes {
+		req := httptest.NewRequest("GET", p, nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNotFound, w.Code, "unauthenticated probe to %s must return 404", p)
+		assert.Contains(t, w.Body.String(), "404 page not found")
+	}
+
+	// 2. Wrong secret path prefix MUST return 404
+	wrongProbes := []string{
+		"/wrongsec/",
+		"/wrongsec/Dashboard",
+		"/wrongsec/dashboard",
+		"/wrongsec/dashboard/",
+	}
+	for _, p := range wrongProbes {
+		req := httptest.NewRequest("GET", p, nil)
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, req)
+		assert.Equal(t, http.StatusNotFound, w.Code, "wrong secret path %s must return 404", p)
+	}
+
+	// 3. Access with valid secret path:
+	// 3a. GET /{secret} -> 301 redirect to /{secret}/
+	reqRootNoSlash := httptest.NewRequest("GET", "/"+secret, nil)
+	wRootNoSlash := httptest.NewRecorder()
+	handler.ServeHTTP(wRootNoSlash, reqRootNoSlash)
+	assert.Equal(t, http.StatusMovedPermanently, wRootNoSlash.Code)
+	assert.Equal(t, "/"+secret+"/", wRootNoSlash.Header().Get("Location"))
+
+	// 3b. GET /{secret}/ -> sets cookie, serves public landing page
+	reqRoot := httptest.NewRequest("GET", "/"+secret+"/", nil)
+	wRoot := httptest.NewRecorder()
+	handler.ServeHTTP(wRoot, reqRoot)
+	assert.Equal(t, http.StatusOK, wRoot.Code)
+	assert.Equal(t, "welcome", wRoot.Body.String())
+	cookies := wRoot.Result().Cookies()
+	var secretCookie *http.Cookie
+	for _, c := range cookies {
+		if c.Name == SecretPathCookieName {
+			secretCookie = c
+			break
+		}
+	}
+	require.NotNil(t, secretCookie, "must set nz-secret-path cookie on access with valid secret prefix")
+	assert.Equal(t, secret, secretCookie.Value)
+
+	// 3c. GET /{secret}/Dashboard (case-insensitive as requested by user) -> 301 redirect to /{secret}/dashboard/
+	reqDashUpper := httptest.NewRequest("GET", "/"+secret+"/Dashboard", nil)
+	wDashUpper := httptest.NewRecorder()
+	handler.ServeHTTP(wDashUpper, reqDashUpper)
+	assert.Equal(t, http.StatusMovedPermanently, wDashUpper.Code)
+	assert.Equal(t, "/"+secret+"/dashboard/", wDashUpper.Header().Get("Location"))
+
+	// 3d. GET /{secret}/dashboard -> 301 redirect to /{secret}/dashboard/
+	reqDashLower := httptest.NewRequest("GET", "/"+secret+"/dashboard", nil)
+	wDashLower := httptest.NewRecorder()
+	handler.ServeHTTP(wDashLower, reqDashLower)
+	assert.Equal(t, http.StatusMovedPermanently, wDashLower.Code)
+	assert.Equal(t, "/"+secret+"/dashboard/", wDashLower.Header().Get("Location"))
+
+	// 3e. GET /{secret}/dashboard/ (unauthenticated) -> 302 redirect to /{secret}/?redirect=/{secret}/dashboard/
+	reqDashUnauth := httptest.NewRequest("GET", "/"+secret+"/dashboard/", nil)
+	wDashUnauth := httptest.NewRecorder()
+	handler.ServeHTTP(wDashUnauth, reqDashUnauth)
+	assert.Equal(t, http.StatusFound, wDashUnauth.Code)
+	assert.Equal(t, "/"+secret+"/?redirect=/"+secret+"/dashboard/", wDashUnauth.Header().Get("Location"))
+
+	// 3f. GET /{secret}/dashboard/ (authenticated with nz-jwt) -> 200 OK "dashboard-ok"
+	reqDashAuth := httptest.NewRequest("GET", "/"+secret+"/dashboard/", nil)
+	reqDashAuth.AddCookie(&http.Cookie{Name: "nz-jwt", Value: token})
+	wDashAuth := httptest.NewRecorder()
+	handler.ServeHTTP(wDashAuth, reqDashAuth)
+	assert.Equal(t, http.StatusOK, wDashAuth.Code)
+	assert.Equal(t, "dashboard-ok", wDashAuth.Body.String())
+
+	// 3g. POST /{secret}/api/v1/login -> 200 OK "login-ok"
+	reqLogin := httptest.NewRequest("POST", "/"+secret+"/api/v1/login", nil)
+	wLogin := httptest.NewRecorder()
+	handler.ServeHTTP(wLogin, reqLogin)
+	assert.Equal(t, http.StatusOK, wLogin.Code)
+	assert.Equal(t, "login-ok", wLogin.Body.String())
+
+	// 4. Access with nz-secret-path cookie:
+	// 4a. GET /assets/app.js with cookie -> 200 OK
+	reqAssetWithCookie := httptest.NewRequest("GET", "/assets/app.js", nil)
+	reqAssetWithCookie.AddCookie(&http.Cookie{Name: SecretPathCookieName, Value: secret})
+	wAssetWithCookie := httptest.NewRecorder()
+	handler.ServeHTTP(wAssetWithCookie, reqAssetWithCookie)
+	assert.Equal(t, http.StatusOK, wAssetWithCookie.Code)
+	assert.Equal(t, "app.js", wAssetWithCookie.Body.String())
+
+	// 4b. GET /api/v1/profile with secret cookie + nz-jwt -> 200 OK
+	reqProfileWithCookie := httptest.NewRequest("GET", "/api/v1/profile", nil)
+	reqProfileWithCookie.AddCookie(&http.Cookie{Name: SecretPathCookieName, Value: secret})
+	reqProfileWithCookie.AddCookie(&http.Cookie{Name: "nz-jwt", Value: token})
+	wProfileWithCookie := httptest.NewRecorder()
+	handler.ServeHTTP(wProfileWithCookie, reqProfileWithCookie)
+	assert.Equal(t, http.StatusOK, wProfileWithCookie.Code)
+	assert.Equal(t, "profile-ok", wProfileWithCookie.Body.String())
+
+	// 5. Access with PAT:
+	reqPAT := httptest.NewRequest("GET", "/api/v1/server", nil)
+	reqPAT.Header.Set("Authorization", "Bearer "+patPlaintext)
+	wPAT := httptest.NewRecorder()
+	handler.ServeHTTP(wPAT, reqPAT)
 	assert.Equal(t, http.StatusOK, wPAT.Code)
 	assert.Equal(t, "server-ok", wPAT.Body.String())
 }

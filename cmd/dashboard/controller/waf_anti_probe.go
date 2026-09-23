@@ -14,6 +14,121 @@ import (
 	"github.com/nezhahq/nezha/service/singleton"
 )
 
+const (
+	SecretPathCookieName = "nz-secret-path"
+	SecretPathHeaderName = "X-Secret-Path"
+)
+
+// secretPathHandler wraps the inner HTTP handler to enforce the random
+// secret path prefix requirement. Any request that lacks the secret path prefix
+// (and lacks an authenticated secret cookie/header/PAT) returns 404 to prevent probing.
+func secretPathHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secret := ""
+		if singleton.Conf != nil {
+			secret = strings.Trim(singleton.Conf.SecretPath, "/")
+		}
+
+		// When SecretPath is empty/not configured, bypass
+		if secret == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		reqPath := r.URL.Path
+		secretPrefix := "/" + secret
+
+		// 1. Check path prefix: /{secret} or /{secret}/*
+		hasPathSecret := reqPath == secretPrefix || strings.HasPrefix(reqPath, secretPrefix+"/")
+
+		// 2. Check secret cookie or header
+		hasCookieSecret := false
+		if cookie, err := r.Cookie(SecretPathCookieName); err == nil && cookie.Value == secret {
+			hasCookieSecret = true
+		}
+		hasHeaderSecret := r.Header.Get(SecretPathHeaderName) == secret
+
+		// 3. Query param ?secret={secret}
+		hasQuerySecret := r.URL.Query().Get("secret") == secret
+
+		// 4. API PAT token in Authorization header
+		hasPAT := false
+		rawAuth := strings.TrimSpace(r.Header.Get("Authorization"))
+		if strings.HasPrefix(rawAuth, "Bearer nzp_") {
+			hasPAT = true
+		}
+
+		if !hasPathSecret && !hasCookieSecret && !hasHeaderSecret && !hasQuerySecret && !hasPAT {
+			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte("404 page not found\n"))
+			return
+		}
+
+		// If accessed via URL path or query secret, set/refresh the secret cookie
+		if hasPathSecret || hasQuerySecret {
+			http.SetCookie(w, &http.Cookie{
+				Name:     SecretPathCookieName,
+				Value:    secret,
+				Path:     "/",
+				MaxAge:   30 * 86400,
+				SameSite: http.SameSiteLaxMode,
+			})
+		}
+
+		// Normalize & rewrite request path
+		if reqPath == secretPrefix {
+			target := secretPrefix + "/"
+			if r.URL.RawQuery != "" {
+				target += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+
+		if strings.HasPrefix(reqPath, secretPrefix+"/") {
+			sub := strings.TrimPrefix(reqPath, secretPrefix)
+
+			// Support domain.com/{secret}/Dashboard and domain.com/{secret}/dashboard
+			if strings.EqualFold(sub, "/dashboard") || strings.EqualFold(sub, "/admin") {
+				target := secretPrefix + "/dashboard/"
+				if r.URL.RawQuery != "" {
+					target += "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, target, http.StatusMovedPermanently)
+				return
+			}
+
+			// Normalization: /Dashboard/ -> /dashboard/
+			if strings.EqualFold(sub, "/dashboard/") || strings.EqualFold(sub, "/admin/") {
+				r.URL.Path = "/dashboard/"
+			} else if len(sub) > len("/dashboard/") && strings.EqualFold(sub[:len("/dashboard/")], "/dashboard/") {
+				r.URL.Path = "/dashboard/" + sub[len("/dashboard/"):]
+			} else {
+				r.URL.Path = sub
+			}
+		} else {
+			// Path did not have prefix, but authorized by cookie/header/PAT
+			if strings.EqualFold(reqPath, "/dashboard") || strings.EqualFold(reqPath, "/admin") {
+				target := secretPrefix + "/dashboard/"
+				if r.URL.RawQuery != "" {
+					target += "?" + r.URL.RawQuery
+				}
+				http.Redirect(w, r, target, http.StatusMovedPermanently)
+				return
+			}
+			if strings.EqualFold(reqPath, "/dashboard/") || strings.EqualFold(reqPath, "/admin/") {
+				r.URL.Path = "/dashboard/"
+			} else if len(reqPath) > len("/dashboard/") && strings.EqualFold(reqPath[:len("/dashboard/")], "/dashboard/") {
+				r.URL.Path = "/dashboard/" + reqPath[len("/dashboard/"):]
+			}
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 // initAntiProbeWAF registers the anti-probe guard into the front WAF.
 // If an unauthenticated client attempts to access any internal path
 // (such as /dashboard, /dashboard/*, protected /api/v1/*, /mcp, /swagger, /debug, etc.),
@@ -32,7 +147,25 @@ func initAntiProbeWAF(mw *jwt.GinJWTMiddleware) {
 			return true
 		}
 
-		// 3. Unauthenticated request to an internal path -> return 404 to prevent probing!
+		// 3. If client is visiting /dashboard/ in browser and has valid secret cookie/header,
+		// redirect to login gate rather than 404 to provide seamless login UX.
+		secret := ""
+		if singleton.Conf != nil {
+			secret = strings.Trim(singleton.Conf.SecretPath, "/")
+		}
+		if secret != "" && c.Request.Method == http.MethodGet &&
+			strings.HasPrefix(path, "/dashboard/") &&
+			!strings.HasPrefix(path, "/dashboard/assets/") {
+			cookie, err := c.Cookie(SecretPathCookieName)
+			if (err == nil && cookie == secret) || c.GetHeader(SecretPathHeaderName) == secret {
+				redirectTarget := "/" + secret + "/?redirect=" + "/" + secret + "/dashboard/"
+				c.Redirect(http.StatusFound, redirectTarget)
+				c.Abort()
+				return false
+			}
+		}
+
+		// 4. Unauthenticated request to an internal path -> return 404 to prevent probing!
 		c.Header("Content-Type", "text/plain; charset=utf-8")
 		c.Header("X-Content-Type-Options", "nosniff")
 		c.String(http.StatusNotFound, "404 page not found\n")
