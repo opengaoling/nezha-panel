@@ -359,6 +359,22 @@ func TestSecretPathProtectionAndRouting(t *testing.T) {
 	assert.Equal(t, http.StatusOK, wProfileWithCookie.Code)
 	assert.Equal(t, "profile-ok", wProfileWithCookie.Body.String())
 
+	// 4c. GET / with cookie (naked port without secret in URL) -> 404 Not Found!
+	reqRootWithCookie := httptest.NewRequest("GET", "/", nil)
+	reqRootWithCookie.AddCookie(&http.Cookie{Name: SecretPathCookieName, Value: secret})
+	wRootWithCookie := httptest.NewRecorder()
+	handler.ServeHTTP(wRootWithCookie, reqRootWithCookie)
+	assert.Equal(t, http.StatusNotFound, wRootWithCookie.Code)
+	assert.Contains(t, wRootWithCookie.Body.String(), "404 page not found")
+
+	// 4d. GET /dashboard with cookie (naked port without secret in URL) -> 404 Not Found!
+	reqDashWithCookie := httptest.NewRequest("GET", "/dashboard", nil)
+	reqDashWithCookie.AddCookie(&http.Cookie{Name: SecretPathCookieName, Value: secret})
+	wDashWithCookie := httptest.NewRecorder()
+	handler.ServeHTTP(wDashWithCookie, reqDashWithCookie)
+	assert.Equal(t, http.StatusNotFound, wDashWithCookie.Code)
+	assert.Contains(t, wDashWithCookie.Body.String(), "404 page not found")
+
 	// 5. Access with PAT:
 	reqPAT := httptest.NewRequest("GET", "/api/v1/server", nil)
 	reqPAT.Header.Set("Authorization", "Bearer "+patPlaintext)

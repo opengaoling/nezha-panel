@@ -41,30 +41,22 @@ func secretPathHandler(next http.Handler) http.Handler {
 		// 1. Check path prefix: /{secret} or /{secret}/*
 		hasPathSecret := reqPath == secretPrefix || strings.HasPrefix(reqPath, secretPrefix+"/")
 
-		// 2. Check secret cookie or header
-		hasCookieSecret := false
-		if cookie, err := r.Cookie(SecretPathCookieName); err == nil && cookie.Value == secret {
-			hasCookieSecret = true
-		}
-		hasHeaderSecret := r.Header.Get(SecretPathHeaderName) == secret
-
-		// 3. Query param ?secret={secret}
+		// 2. Query param ?secret={secret}
 		hasQuerySecret := r.URL.Query().Get("secret") == secret
 
-		// 4. API PAT token in Authorization header
+		// 3. API PAT token in Authorization header
 		hasPAT := false
 		rawAuth := strings.TrimSpace(r.Header.Get("Authorization"))
 		if strings.HasPrefix(rawAuth, "Bearer nzp_") {
 			hasPAT = true
 		}
 
-		if !hasPathSecret && !hasCookieSecret && !hasHeaderSecret && !hasQuerySecret && !hasPAT {
-			w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-			w.Header().Set("X-Content-Type-Options", "nosniff")
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte("404 page not found\n"))
-			return
+		// 4. Check secret cookie or header
+		hasCookieSecret := false
+		if cookie, err := r.Cookie(SecretPathCookieName); err == nil && cookie.Value == secret {
+			hasCookieSecret = true
 		}
+		hasHeaderSecret := r.Header.Get(SecretPathHeaderName) == secret
 
 		// If accessed via URL path or query secret, set/refresh the secret cookie
 		if hasPathSecret || hasQuerySecret {
@@ -78,7 +70,7 @@ func secretPathHandler(next http.Handler) http.Handler {
 			r.Header.Set(SecretPathHeaderName, secret)
 		}
 
-		// Normalize & rewrite request path
+		// Handle exact secret prefix /{secret} -> redirect to /{secret}/
 		if reqPath == secretPrefix {
 			target := secretPrefix + "/"
 			if r.URL.RawQuery != "" {
@@ -88,7 +80,8 @@ func secretPathHandler(next http.Handler) http.Handler {
 			return
 		}
 
-		if strings.HasPrefix(reqPath, secretPrefix+"/") {
+		// If accessed with secret path prefix:
+		if hasPathSecret {
 			sub := strings.TrimPrefix(reqPath, secretPrefix)
 
 			// Support domain.com/{secret}/Dashboard and domain.com/{secret}/dashboard
@@ -109,25 +102,52 @@ func secretPathHandler(next http.Handler) http.Handler {
 			} else {
 				r.URL.Path = sub
 			}
-		} else {
-			// Path did not have prefix, but authorized by cookie/header/PAT
-			if strings.EqualFold(reqPath, "/dashboard") || strings.EqualFold(reqPath, "/admin") {
-				target := secretPrefix + "/dashboard/"
-				if r.URL.RawQuery != "" {
-					target += "?" + r.URL.RawQuery
-				}
-				http.Redirect(w, r, target, http.StatusMovedPermanently)
-				return
-			}
-			if strings.EqualFold(reqPath, "/dashboard/") || strings.EqualFold(reqPath, "/admin/") {
-				r.URL.Path = "/dashboard/"
-			} else if len(reqPath) > len("/dashboard/") && strings.EqualFold(reqPath[:len("/dashboard/")], "/dashboard/") {
-				r.URL.Path = "/dashboard/" + reqPath[len("/dashboard/"):]
-			}
+
+			next.ServeHTTP(w, r)
+			return
 		}
 
-		next.ServeHTTP(w, r)
+		// If accessed via query param ?secret={secret}:
+		if hasQuerySecret {
+			target := secretPrefix + reqPath
+			if strings.EqualFold(reqPath, "/dashboard") || strings.EqualFold(reqPath, "/admin") {
+				target = secretPrefix + "/dashboard/"
+			}
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+
+		// For requests without the secret path in the URL:
+		// Subresources (/assets/*, /dashboard/assets/*, static icons) and /api/*
+		// are allowed if authorized by cookie/header/PAT.
+		if (hasCookieSecret || hasHeaderSecret || hasPAT) && isSubresourceOrApi(reqPath) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// All other requests without secret in URL (e.g. naked port "/", "/dashboard", "/login",
+		// or any unauthenticated probes) must promptly return 404!
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.WriteHeader(http.StatusNotFound)
+		w.Write([]byte("404 page not found\n"))
 	})
+}
+
+// isSubresourceOrApi checks if the path is an asset, static icon, or API request
+// that is loaded by the frontend pages rather than a top-level page document route.
+func isSubresourceOrApi(p string) bool {
+	if strings.HasPrefix(p, "/assets/") || strings.HasPrefix(p, "/dashboard/assets/") || strings.HasPrefix(p, "/api/") {
+		return true
+	}
+	switch p {
+	case "/favicon.ico", "/manifest.json", "/robots.txt",
+		"/android-chrome-192x192.png", "/android-chrome-512x512.png",
+		"/apple-touch-icon.png", "/animated-man.webp", "/logo.svg",
+		"/dashboard/logo.svg":
+		return true
+	}
+	return false
 }
 
 // initAntiProbeWAF registers the anti-probe guard into the front WAF.
