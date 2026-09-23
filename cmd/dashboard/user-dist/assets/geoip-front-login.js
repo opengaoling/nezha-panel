@@ -560,7 +560,10 @@
   window.addEventListener("nz:auth-required", function () {
     clearAuthSession();
     document.documentElement.classList.remove("nz-authenticated");
-    ensureLoginGateDOM();
+    if (window.location.pathname.indexOf("/login") !== -1 || window.__forceAuthGate === true) {
+      document.documentElement.classList.add("nz-force-auth");
+      ensureLoginGateDOM();
+    }
   });
 
   function initGate() {
