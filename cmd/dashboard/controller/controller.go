@@ -31,6 +31,10 @@ func ServeWeb(frontendDist fs.FS) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 
+	r.Use(waf.RealIp)
+	r.Use(waf.Waf)
+	r.Use(recordPath)
+
 	if singleton.Conf.Debug {
 		gin.SetMode(gin.DebugMode)
 		pprof.Register(r)
@@ -39,10 +43,6 @@ func ServeWeb(frontendDist fs.FS) http.Handler {
 		log.Printf("NEZHA>> Swagger(%s) UI available at http://localhost:%d/swagger/index.html", docs.SwaggerInfo.Version, singleton.Conf.ListenPort)
 		r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerfiles.Handler))
 	}
-
-	r.Use(waf.RealIp)
-	r.Use(waf.Waf)
-	r.Use(recordPath)
 
 	routers(r, frontendDist)
 
@@ -59,6 +59,7 @@ func routers(r *gin.Engine, frontendDist fs.FS) {
 	if err := authMiddleware.MiddlewareInit(); err != nil {
 		log.Fatal("authMiddleware.MiddlewareInit Error:" + err.Error())
 	}
+	initAntiProbeWAF(authMiddleware)
 	// /mcp — Model Context Protocol endpoint, authenticated by PAT only (闸 1 + 闸 2)。
 	// 不放在 /api/v1 下：MCP client 配置 URL 更短，且 MCP transport 协议演进与 REST API
 	// 解耦。鉴权一律走 apiTokenAuthMiddleware；不接受 JWT 以避免浏览器误触。

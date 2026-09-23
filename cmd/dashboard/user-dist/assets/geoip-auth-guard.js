@@ -123,6 +123,7 @@
     if (!response) return false;
     if (response.headers && response.headers.get(authHeader) === "1") return true;
     if (response.status === 401) return true;
+    if (response.status === 404 && hasSessionCookie()) return true;
     return false;
   }
 

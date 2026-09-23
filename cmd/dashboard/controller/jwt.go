@@ -119,6 +119,9 @@ func payloadFunc() func(data any) jwt.MapClaims {
 
 func identityHandler() func(c *gin.Context) any {
 	return func(c *gin.Context) any {
+		if val, exists := c.Get(model.CtxKeyAuthorizedUser); exists && val != nil {
+			return val
+		}
 		claims := jwt.ExtractClaims(c)
 
 		keyID, ok := claims[jwtClaimKeyID].(string)
@@ -233,11 +236,10 @@ func unauthorized() func(c *gin.Context, code int, message string) {
 
 func respondUnauthorized(c *gin.Context) {
 	clearAuthCookies(c)
-	c.Header(authInvalidHeader, "1")
-	c.AbortWithStatusJSON(http.StatusUnauthorized, model.CommonResponse[any]{
-		Success: false,
-		Error:   "ApiErrorUnauthorized",
-	})
+	c.Header("Content-Type", "text/plain; charset=utf-8")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.String(http.StatusNotFound, "404 page not found\n")
+	c.Abort()
 }
 
 func clearAuthCookies(c *gin.Context) {

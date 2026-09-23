@@ -41,9 +41,17 @@ func RealIp(c *gin.Context) {
 	c.Next()
 }
 
+// AntiProbeGuard is an optional checker invoked by WAF to protect internal
+// paths from unauthenticated probing. It returns true if the request is
+// allowed to proceed, or false if it was rejected with a 404 response.
+var AntiProbeGuard func(c *gin.Context) bool
+
 func Waf(c *gin.Context) {
 	if err := model.CheckIP(singleton.DB, c.GetString(model.CtxKeyRealIPStr)); err != nil {
 		ShowBlockPage(c, err)
+		return
+	}
+	if AntiProbeGuard != nil && !AntiProbeGuard(c) {
 		return
 	}
 	c.Next()
