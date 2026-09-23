@@ -31,6 +31,17 @@
     return "";
   }
 
+  // Helper: Secret path prefix detection
+  function getSecretPrefix() {
+    var secretCookie = getCookie("nz-secret-path");
+    if (secretCookie) return "/" + encodeURIComponent(secretCookie);
+    var parts = window.location.pathname.split("/").filter(Boolean);
+    if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
+      return "/" + parts[0];
+    }
+    return "";
+  }
+
   // Helper: Clear authentication tokens
   function clearAuthSession() {
     try {
@@ -137,6 +148,14 @@
       }
     } catch (_e) {}
 
+    // Update admin link href with secret prefix if applicable
+    var secretPrefix = getSecretPrefix();
+    var dashUrl = secretPrefix ? secretPrefix + "/dashboard/" : "/dashboard/";
+    var adminLinks = document.querySelectorAll(".nz-admin-link");
+    for (var i = 0; i < adminLinks.length; i++) {
+      adminLinks[i].setAttribute("href", dashUrl);
+    }
+
     // Bind login form submit
     var form = document.getElementById("nz-login-form");
     if (form) {
@@ -148,6 +167,9 @@
   function ensureLoginGateDOM() {
     var existing = document.getElementById("nz-login-gate");
     if (existing) {
+      existing.style.display = "";
+      existing.style.opacity = "1";
+      existing.style.pointerEvents = "auto";
       bindGateEvents();
       return existing;
     }
@@ -424,10 +446,11 @@
   // Verify Session with Backend
   function verifySession() {
     var hasCookie = !!getCookie(AUTH_COOKIE_NAME);
-    var hasStorageToken = false;
+    var storageToken = "";
     try {
-      hasStorageToken = !!(localStorage.getItem("token") || localStorage.getItem("nezha-token"));
+      storageToken = localStorage.getItem("token") || localStorage.getItem("nezha-token") || localStorage.getItem("jwt") || "";
     } catch (_e) {}
+    var hasStorageToken = !!storageToken;
 
     // If no credentials exist anywhere, definitely not logged in
     if (!hasCookie && !hasStorageToken) {
@@ -436,9 +459,15 @@
       return;
     }
 
+    var headers = {};
+    if (storageToken) {
+      headers["Authorization"] = "Bearer " + storageToken;
+    }
+
     // Verify session by calling /api/v1/profile
     fetch("/api/v1/profile", {
       method: "GET",
+      headers: headers,
       credentials: "same-origin"
     })
       .then(function (res) {
@@ -449,6 +478,16 @@
       })
       .then(function (profileRes) {
         if (profileRes && profileRes.success) {
+          // If there was a redirect URL waiting, navigate there now
+          try {
+            var params = new URLSearchParams(window.location.search);
+            var target = params.get("redirect");
+            if (target && target.startsWith("/")) {
+              window.location.replace(target);
+              return;
+            }
+          } catch (_e) {}
+
           // Session is fully verified & active!
           document.documentElement.classList.add("nz-authenticated");
           var gate = document.getElementById("nz-login-gate");
@@ -476,11 +515,16 @@
     ensureLoginGateDOM();
   });
 
+  function initGate() {
+    bindGateEvents();
+    verifySession();
+  }
+
   // Execute verification as soon as DOM is ready or immediately
   if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", verifySession);
+    document.addEventListener("DOMContentLoaded", initGate);
   } else {
-    verifySession();
+    initGate();
   }
 
 })();

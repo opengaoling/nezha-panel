@@ -177,8 +177,8 @@ func initAntiProbeWAF(mw *jwt.GinJWTMiddleware) {
 
 // isPublicPath checks if the given path and method are publicly accessible.
 func isPublicPath(p, method string) bool {
-	// Landing page (serves user frontend with custom login gate)
-	if p == "/" || p == "" {
+	// Landing page and login page (serves user frontend with custom login gate)
+	if p == "/" || p == "" || p == "/login" || p == "/login/" {
 		return true
 	}
 
@@ -202,7 +202,12 @@ func isPublicPath(p, method string) bool {
 	}
 
 	// Public OAuth2 initiation and callback (GET only)
-	if strings.HasPrefix(p, "/api/v1/oauth2/") && method == http.MethodGet {
+	if strings.HasPrefix(p, "/api/v1/oauth2") && method == http.MethodGet {
+		return true
+	}
+
+	// Public frontend settings for guests (site title, language, custom code)
+	if p == "/api/v1/setting" && method == http.MethodGet {
 		return true
 	}
 
