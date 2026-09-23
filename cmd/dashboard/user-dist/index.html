@@ -75,8 +75,6 @@
     <meta name="apple-mobile-web-app-title" content="Nezha Monitoring" />
     <link rel="apple-touch-icon" href="/android-chrome-192x192.png" />
 
-    <link rel="stylesheet" crossorigin href="/assets/geoip-front-login.css?v=front-login-20260923b">
-    <script src="/assets/geoip-front-login.js?v=front-login-20260923b"></script>
     <script src="/assets/geoip-front-theme.js?v=front-theme-20260923a" defer></script>
     <script src="/assets/geoip-front-server-filter.js?v=front-server-filter-20260723d" defer></script>
     <script type="module" crossorigin src="/assets/index.geoip-mobile-flagcss-20260611.js?v=frontfix-20260908-footer"></script>
@@ -119,102 +117,8 @@
     <link rel="stylesheet" crossorigin href="/assets/index.BMp6-FP0.css?v=frontfix-20260613c">
     <link rel="stylesheet" crossorigin href="/assets/geoip-front-theme.css?v=front-theme-20260923a">
     <link rel="stylesheet" crossorigin href="/assets/geoip-front-server-filter.css?v=front-server-filter-20260723d">
-    <style id="nz-auth-gate-style">
-      html:not(.nz-authenticated) #root {
-        display: none !important;
-      }
-      html.nz-authenticated #nz-login-gate {
-        display: none !important;
-      }
-    </style>
   </head>
   <body>
-    <div id="nz-login-gate">
-      <div class="nz-bg-decor">
-        <div class="nz-bg-grid"></div>
-        <div class="nz-glow-orb nz-glow-orb-1"></div>
-        <div class="nz-glow-orb nz-glow-orb-2"></div>
-        <div class="nz-glow-orb nz-glow-orb-3"></div>
-      </div>
-      <div class="nz-top-bar">
-        <button type="button" class="nz-theme-btn" id="nz-theme-toggle-btn" aria-label="Toggle Theme">
-        </button>
-      </div>
-      <div class="nz-login-card" id="nz-login-card">
-        <div class="nz-card-header">
-          <div class="nz-logo-wrapper">
-            <div class="nz-logo-pulse"></div>
-            <div class="nz-logo-box">
-              <svg viewBox="0 0 24 24" fill="none" stroke="url(#nz-logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <defs>
-                  <linearGradient id="nz-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" stop-color="#38bdf8" />
-                    <stop offset="50%" stop-color="#818cf8" />
-                    <stop offset="100%" stop-color="#c084fc" />
-                  </linearGradient>
-                </defs>
-                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-              </svg>
-            </div>
-          </div>
-          <h1 class="nz-brand-title">哪吒监控</h1>
-          <div class="nz-brand-subtitle">NEZHA DASHBOARD · 访问网关</div>
-          <div class="nz-gateway-badge">
-            <span class="nz-pulse-dot"></span>
-            <span>身份认证网关已就绪</span>
-          </div>
-        </div>
-        <div class="nz-alert nz-alert-error" id="nz-alert-error">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <span id="nz-error-text">用户名或密码错误</span>
-        </div>
-        <div class="nz-alert nz-alert-success" id="nz-alert-success">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-          <span id="nz-success-text">验证成功，正在进入系统...</span>
-        </div>
-        <form class="nz-form" id="nz-login-form" autocomplete="on">
-          <div class="nz-field-group">
-            <label class="nz-label" for="nz-username">用户名 / 账号</label>
-            <div class="nz-input-wrap">
-              <div class="nz-input-icon">
-                <svg viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-              </div>
-              <input type="text" id="nz-username" class="nz-input" placeholder="请输入面板账号" required autocomplete="username" spellcheck="false" />
-            </div>
-          </div>
-          <div class="nz-field-group">
-            <label class="nz-label" for="nz-password">访问密码</label>
-            <div class="nz-input-wrap">
-              <div class="nz-input-icon">
-                <svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              </div>
-              <input type="password" id="nz-password" class="nz-input" placeholder="请输入面板密码" required autocomplete="current-password" />
-              <button type="button" class="nz-pwd-toggle" id="nz-pwd-toggle" aria-label="Toggle Password Visibility">
-                <svg id="nz-eye-icon" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
-              </button>
-            </div>
-          </div>
-          <div class="nz-form-options">
-            <label class="nz-remember-label">
-              <input type="checkbox" id="nz-remember-check" class="nz-remember-checkbox" />
-              <span>记住账号</span>
-            </label>
-            <a href="/dashboard/" class="nz-admin-link">
-              <span>管理后台</span>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </a>
-          </div>
-          <button type="submit" class="nz-submit-btn" id="nz-submit-btn">
-            <span class="nz-spinner"></span>
-            <span class="nz-btn-text">登 录 进 入</span>
-          </button>
-        </form>
-        <div class="nz-card-footer">
-          <div>哪吒监控系统 · 安全身份认证网关</div>
-          <div style="opacity: 0.6; margin-top: 2px;">End-to-End Encrypted Session</div>
-        </div>
-      </div>
-    </div>
     <div id="root"></div>
   </body>
 </html>
