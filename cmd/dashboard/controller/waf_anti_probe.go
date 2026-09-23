@@ -158,6 +158,12 @@ func initAntiProbeWAF(mw *jwt.GinJWTMiddleware) {
 			cookie, err := c.Cookie(SecretPathCookieName)
 			hasSecret := (err == nil && cookie == secret) || c.GetHeader(SecretPathHeaderName) == secret
 			if hasSecret {
+				// Allow public frontend APIs, settings, and server stream for legitimate secret path visitors
+				if path == "/api/v1/setting" || path == "/api/v1/ws/server" || path == "/api/v1/server-group" ||
+					path == "/api/v1/service" || strings.HasPrefix(path, "/api/v1/service/") ||
+					strings.HasPrefix(path, "/api/v1/server/") || strings.HasPrefix(path, "/server/") {
+					return true
+				}
 				if strings.HasPrefix(path, "/dashboard/assets/") || path == "/dashboard/login" {
 					return true
 				}

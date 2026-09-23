@@ -4,8 +4,8 @@
  * Designed for user-dist frontend
  */
 
-/* Anti-flash & Gating rule: Root is hidden until authenticated */
-html:not(.nz-authenticated) #root {
+/* Gating rule: Root is only hidden when force-auth gate is explicitly activated */
+html.nz-force-auth:not(.nz-authenticated) #root {
   display: none !important;
 }
 

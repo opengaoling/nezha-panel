@@ -480,10 +480,18 @@
     } catch (_e) {}
     var hasStorageToken = !!storageToken;
 
+    var isExplicitLogin = window.location.pathname.indexOf("/login") !== -1 ||
+      (new URLSearchParams(window.location.search)).has("login") ||
+      (new URLSearchParams(window.location.search)).has("redirect") ||
+      window.__forceAuthGate === true;
+
     // If no credentials exist anywhere, definitely not logged in
     if (!hasCookie && !hasStorageToken) {
       document.documentElement.classList.remove("nz-authenticated");
-      ensureLoginGateDOM();
+      if (isExplicitLogin) {
+        document.documentElement.classList.add("nz-force-auth");
+        ensureLoginGateDOM();
+      }
       return;
     }
 
@@ -518,6 +526,7 @@
 
           // Session is fully verified & active!
           document.documentElement.classList.add("nz-authenticated");
+          document.documentElement.classList.remove("nz-force-auth");
           var gate = document.getElementById("nz-login-gate");
           if (gate && gate.parentNode) {
             gate.parentNode.removeChild(gate);
@@ -529,10 +538,13 @@
         }
       })
       .catch(function () {
-        // Session invalid or expired: clear and show login gate
+        // Session invalid or expired: clear and show login gate only if explicit login
         clearAuthSession();
         document.documentElement.classList.remove("nz-authenticated");
-        ensureLoginGateDOM();
+        if (isExplicitLogin) {
+          document.documentElement.classList.add("nz-force-auth");
+          ensureLoginGateDOM();
+        }
       });
   }
 
