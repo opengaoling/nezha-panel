@@ -95,7 +95,60 @@ docker logs nezha-dashboard
 
 ---
 
-### 方式三：反向代理与域名 SSL 配置
+### 方式三：独立二进制 Systemd 服务部署（原生高性能）
+
+适用于不希望运行 Docker 的轻量级云服务器或 VPS：
+
+#### 1. 创建运行目录与数据目录
+```bash
+sudo mkdir -p /opt/nezha-panel/bin /opt/nezha-panel/data
+cd /opt/nezha-panel
+```
+
+#### 2. 下载或放置构建好的 dashboard 二进制
+```bash
+# 将构建产物 dashboard 放置在 /opt/nezha-panel/bin/dashboard
+sudo chmod +x /opt/nezha-panel/bin/dashboard
+```
+
+#### 3. 配置 Systemd 服务
+创建服务单元文件 `/etc/systemd/system/nezha-dashboard.service`：
+```ini
+[Unit]
+Description=Nezha Monitoring Dashboard
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/nezha-panel
+ExecStart=/opt/nezha-panel/bin/dashboard -c /opt/nezha-panel/data/config.yaml
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
+```
+
+#### 4. 启动与开机自启
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now nezha-dashboard
+```
+
+#### 5. 查看运行状态与 8 位随机访问路径
+```bash
+sudo systemctl status nezha-dashboard
+# 或查看日志获取生成的 8 位随机路径：
+sudo journalctl -u nezha-dashboard -n 50 --no-pager
+# 或直接读取配置文件：
+cat /opt/nezha-panel/data/config.yaml | grep secret_path
+```
+
+---
+
+### 方式四：反向代理与域名 SSL 配置
 
 为面板绑定域名并配置 SSL 证书时，需注意开启 **WebSocket** 支持与 **gRPC** 兼容。
 
