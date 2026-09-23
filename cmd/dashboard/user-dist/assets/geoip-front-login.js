@@ -263,8 +263,11 @@
       '</div>'
     ].join("\n");
 
-    document.body.appendChild(container);
-    bindGateEvents();
+    var target = document.body || document.documentElement;
+    if (target) {
+      target.appendChild(container);
+      bindGateEvents();
+    }
     return container;
   }
 
@@ -400,46 +403,58 @@
   function mountDashboardUserPill(username) {
     if (document.getElementById("nz-auth-pill")) return;
 
-    var secretCookie = getCookie("nz-secret-path");
-    var dashUrl = secretCookie ? "/" + encodeURIComponent(secretCookie) + "/dashboard/" : "/dashboard/";
+    function renderPill() {
+      if (document.getElementById("nz-auth-pill")) return;
+      var target = document.body || document.documentElement;
+      if (!target) return;
 
-    var pill = document.createElement("div");
-    pill.id = "nz-auth-pill";
+      var secretCookie = getCookie("nz-secret-path");
+      var dashUrl = secretCookie ? "/" + encodeURIComponent(secretCookie) + "/dashboard/" : "/dashboard/";
 
-    var displayName = username || "管理员";
-    var avatarLetter = displayName.charAt(0).toUpperCase();
+      var pill = document.createElement("div");
+      pill.id = "nz-auth-pill";
 
-    pill.innerHTML = [
-      '<div class="nz-pill-avatar">' + avatarLetter + '</div>',
-      '<span class="nz-pill-user" title="' + displayName + '">' + displayName + '</span>',
-      '<div class="nz-pill-actions">',
-      '  <a href="' + dashUrl + '" class="nz-pill-btn" title="进入管理后台">',
-      '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
-      '    <span>后台</span>',
-      '  </a>',
-      '  <button type="button" class="nz-pill-btn nz-pill-logout" id="nz-logout-btn" title="退出登录">',
-      '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
-      '    <span>退出</span>',
-      '  </button>',
-      '</div>'
-    ].join("");
+      var displayName = username || "管理员";
+      var avatarLetter = displayName.charAt(0).toUpperCase();
 
-    document.body.appendChild(pill);
+      pill.innerHTML = [
+        '<div class="nz-pill-avatar">' + avatarLetter + '</div>',
+        '<span class="nz-pill-user" title="' + displayName + '">' + displayName + '</span>',
+        '<div class="nz-pill-actions">',
+        '  <a href="' + dashUrl + '" class="nz-pill-btn" title="进入管理后台">',
+        '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
+        '    <span>后台</span>',
+        '  </a>',
+        '  <button type="button" class="nz-pill-btn nz-pill-logout" id="nz-logout-btn" title="退出登录">',
+        '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
+        '    <span>退出</span>',
+        '  </button>',
+        '</div>'
+      ].join("");
 
-    var adminLinks = document.querySelectorAll(".nz-admin-link");
-    for (var i = 0; i < adminLinks.length; i++) {
-      adminLinks[i].setAttribute("href", dashUrl);
+      target.appendChild(pill);
+
+      var adminLinks = document.querySelectorAll(".nz-admin-link");
+      for (var i = 0; i < adminLinks.length; i++) {
+        adminLinks[i].setAttribute("href", dashUrl);
+      }
+
+      var logoutBtn = document.getElementById("nz-logout-btn");
+      if (logoutBtn) {
+        logoutBtn.addEventListener("click", function () {
+          if (window.confirm("确定要退出登录吗？")) {
+            clearAuthSession();
+            document.documentElement.classList.remove("nz-authenticated");
+            window.location.reload();
+          }
+        });
+      }
     }
 
-    var logoutBtn = document.getElementById("nz-logout-btn");
-    if (logoutBtn) {
-      logoutBtn.addEventListener("click", function () {
-        if (window.confirm("确定要退出登录吗？")) {
-          clearAuthSession();
-          document.documentElement.classList.remove("nz-authenticated");
-          window.location.reload();
-        }
-      });
+    if (document.body) {
+      renderPill();
+    } else {
+      document.addEventListener("DOMContentLoaded", renderPill, { once: true });
     }
   }
 

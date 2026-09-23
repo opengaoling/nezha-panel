@@ -666,9 +666,9 @@ html.light .nz-input-wrap:focus-within {
    ========================================================================== */
 #nz-auth-pill {
   position: fixed;
-  top: 16px;
-  right: 18px;
-  z-index: 9999;
+  bottom: 22px;
+  left: 22px;
+  z-index: 999;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -763,9 +763,11 @@ html.light .nz-pill-btn {
     right: 14px;
   }
   #nz-auth-pill {
-    top: 10px;
-    right: 10px;
-    padding: 4px 10px;
+    bottom: 16px;
+    left: 16px;
+    top: auto;
+    right: auto;
+    padding: 5px 12px 5px 8px;
     font-size: 12px;
   }
 }
