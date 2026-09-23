@@ -176,12 +176,13 @@ func TestAntiProbeWAFAuthenticatedAccessAllowed(t *testing.T) {
 
 	// Authenticated request with PAT
 	patPlaintext := "nzp_testtoken1234567890abcdef"
+	exp := time.Now().Add(time.Hour)
 	tok := model.APIToken{
-		Common:    model.Common{ID: 10},
+		ID:        10,
 		UserID:    user.ID,
 		Name:      "ci-pat",
 		TokenHash: model.HashAPIToken(patPlaintext),
-		ExpiresAt: time.Now().Add(time.Hour),
+		ExpiresAt: &exp,
 	}
 	require.NoError(t, singleton.DB.Create(&tok).Error)
 
@@ -227,12 +228,13 @@ func TestSecretPathProtectionAndRouting(t *testing.T) {
 	require.NoError(t, err)
 
 	patPlaintext := "nzp_secretpat1234567890abcdef"
+	exp2 := time.Now().Add(time.Hour)
 	tok := model.APIToken{
-		Common:    model.Common{ID: 20},
+		ID:        20,
 		UserID:    user.ID,
 		Name:      "ci-secret-pat",
 		TokenHash: model.HashAPIToken(patPlaintext),
-		ExpiresAt: time.Now().Add(time.Hour),
+		ExpiresAt: &exp2,
 	}
 	require.NoError(t, singleton.DB.Create(&tok).Error)
 
