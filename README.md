@@ -17,6 +17,7 @@
   - **自动生成与持久化**：首次启动若未设置，系统自动通过安全随机源生成 8 位英文字母并保存至 `config.yaml`。
   - **大小写全兼容**：支持 `/Dashboard` 与 `/dashboard` 访问，未登录访问后台自动重定向至登录界面，登录成功后自动跳转回目标后台。
   - **无感安全会话**：通过专属路径访问时自动下发 `nz-secret-path` Cookie，后续所有的 SPA 资源请求、API 调用与 WebSocket 数据流均畅行无阻。
+- 🌐 **去指纹化非特征默认端口（`2052`）**：彻底移除与哪吒监控强关联的传统特征端口（`8008`），默认采用全网无关联的 `2052` 端口；同时该端口原生兼容 Cloudflare CDN 免费版回源转发，兼具隐蔽性与 CDN 扩展性。
 
 ---
 
@@ -41,7 +42,7 @@ services:
     container_name: nezha-dashboard
     restart: always
     ports:
-      - "8008:8008"   # Web 面板端口与 Agent gRPC 通信端口
+      - "2052:2052"   # Web 面板端口与 Agent gRPC 通信端口
     environment:
       - TZ=Asia/Shanghai
       # 可选：自定义固定 8 位防探测字母路径（不填则首次启动自动随机生成）
@@ -66,7 +67,7 @@ NEZHA>> generated new secret_path: /jjjjjjxf (access panel via /jjjjjjxf/ or /jj
 ```
 
 #### 5. 首次登录与配置
-1. 在浏览器中打开：`http://<你的服务器IP>:8008/<8位随机路径>/Dashboard`（例如 `http://1.2.3.4:8008/jjjjjjxf/Dashboard`）。
+1. 在浏览器中打开：`http://<你的服务器IP>:2052/<8位随机路径>/Dashboard`（例如 `http://1.2.3.4:2052/jjjjjjxf/Dashboard`）。
 2. 若系统为初始安装，默认管理员账号密码为：
    - 用户名：`admin`
    - 密　码：`admin`
@@ -82,7 +83,7 @@ NEZHA>> generated new secret_path: /jjjjjjxf (access panel via /jjjjjjxf/ or /jj
 docker run -d \
   --name nezha-dashboard \
   --restart always \
-  -p 8008:8008 \
+  -p 2052:2052 \
   -e TZ=Asia/Shanghai \
   -v /opt/nezha-dashboard/data:/dashboard/data \
   ghcr.io/opengaoling/nezha-panel:latest
@@ -179,7 +180,7 @@ server {
     proxy_set_header Connection "upgrade";
 
     location / {
-        proxy_pass http://127.0.0.1:8008;
+        proxy_pass http://127.0.0.1:2052;
     }
 }
 ```
@@ -187,7 +188,7 @@ server {
 #### Caddy 配置示例
 ```caddy
 monitor.yourdomain.com {
-    reverse_proxy 127.0.0.1:8008
+    reverse_proxy 127.0.0.1:2052
 }
 ```
 
@@ -200,7 +201,7 @@ monitor.yourdomain.com {
 | 配置项 | 环境变量 | 说明 | 示例 |
 | :--- | :--- | :--- | :--- |
 | `secret_path` | `NEZHA_SECRET_PATH` | 8 位随机英文路径防探测前缀 | `jjjjjjxf` |
-| `listen_port` | - | 面板服务监听端口 | `8008` |
+| `listen_port` | - | 面板服务监听端口（默认去指纹化端口） | `2052` |
 | `agent_secret_key` | - | Agent 通信连接密钥 | 在后台管理界面配置 |
 | `jwt_timeout` | - | 登录 Token 过期有效时长（小时） | `24` |
 | `force_auth` | - | 是否强制要求全局认证 | `true` |
@@ -213,10 +214,10 @@ monitor.yourdomain.com {
 
 ```bash
 curl -L https://raw.githubusercontent.com/nezhahq/scripts/main/agent/install.sh -o nezha.sh && chmod +x nezha.sh
-./nezha.sh install_agent <面板域名或IP> 8008 <Agent通信密钥>
+./nezha.sh install_agent <面板域名或IP> 2052 <Agent通信密钥>
 ```
 
-> **提示**：如果面板配置了反向代理，请确保反代服务（如 Nginx/Cloudflare）放行了 gRPC 通信或将 Agent 通信端口直连宿主机的 8008 端口。
+> **提示**：如果面板配置了反向代理，请确保反代服务（如 Nginx/Cloudflare）放行了 gRPC 通信或将 Agent 通信端口直连宿主机的 2052 端口。
 
 ---
 
