@@ -7,7 +7,7 @@
   is_official: true
 - path: "user-dist"
   name: "Community"
-  repository: "https://github.com/opengaoling/nezha-geoip-frontend"
+  repository: "https://github.com/opengaoling/nezha-panel"
   author: "opengaoling"
   version: "v2.1.2"
   is_official: false

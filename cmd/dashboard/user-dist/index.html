@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      ;(() => {
+        const storageKey = "vite-ui-theme"
+        const root = document.documentElement
+        const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
+        const mobileUA = /Mobile|Android|iPhone|iPod|IEMobile|BlackBerry|Opera Mini|Windows Phone/i.test(navigator.userAgent)
+        root.classList.toggle("geoip-mobile-ua", mobileUA)
+        window.GeoIPMobileUA = mobileUA
+
+        const resolveTheme = (theme) =>
+          theme === "system" ? (mediaQuery.matches ? "dark" : "light") : theme
+
+        function updateThemeColor(nextTheme) {
+          const themeColor = nextTheme === "dark" ? "hsl(30 15% 8%)" : "hsl(0 0% 98%)"
+          let meta = document.querySelector('meta[name="theme-color"]')
+
+          if (!meta) {
+            meta = document.createElement("meta")
+            meta.setAttribute("name", "theme-color")
+            document.head.appendChild(meta)
+          }
+
+          meta.setAttribute("content", themeColor)
+        }
+
+        function applyResolvedTheme(resolvedTheme) {
+          root.classList.remove("light", "dark")
+          root.classList.add(resolvedTheme)
+          root.style.colorScheme = resolvedTheme
+          root.style.backgroundColor =
+            resolvedTheme === "dark" ? "hsl(30 15% 8%)" : "hsl(0 0% 98%)"
+          updateThemeColor(resolvedTheme)
+        }
+
+        let theme = "system"
+
+        try {
+          const storedTheme = localStorage.getItem(storageKey)
+          if (storedTheme === "light" || storedTheme === "dark" || storedTheme === "system") {
+            theme = storedTheme
+          }
+        } catch (_e) {
+          theme = "system"
+        }
+
+        applyResolvedTheme(resolveTheme(theme))
+
+        // Add loaded class after React has mounted
+        window.addEventListener("load", () => {
+          const root = document.getElementById("root")
+          if (root) {
+            // 使用 RAF 确保在下一帧渲染
+            requestAnimationFrame(() => {
+              requestAnimationFrame(() => {
+                root.classList.add("loaded")
+              })
+            })
+          }
+        })
+      })()
+    </script>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" href="/apple-touch-icon.png?v=front-assets-20260617a" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>哪吒监控 Nezha Monitoring</title>
+
+    <!-- PWA -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="hsl(0 0% 98%)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Nezha Monitoring" />
+    <link rel="apple-touch-icon" href="/android-chrome-192x192.png" />
+
+    <script src="/assets/geoip-front-theme.js?v=front-theme-20260923a"></script>
+    <script src="/assets/geoip-front-server-filter.js?v=front-server-filter-20260723d"></script>
+    <script type="module" crossorigin src="/assets/index.geoip-mobile-flagcss-20260611.js?v=frontfix-20260908-footer"></script>
+    <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime.Cyuzqnbw.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/@floating-ui.Y9xXyXUR.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/react-router.Broep3A8.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/@heroicons.BlNrKDrc.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/@radix-ui.B2mMScJc.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/@tanstack.aKzOUVvA.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/class-variance-authority.BLUaYARZ.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/cmdk.tJPnYQwy.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/country-flag-icons.RGeqALFX.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/d3-array.C3aIW1U3.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/d3-geo.DQhAwR9_.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/dayjs.DG8ML_9Z.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/framer-motion.BxRIk3Fo.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/diacritics.BuB40JEw.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/i18n-iso-countries.CogLpzo7.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/i18next.PaLHWX5k.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/lucide-react.DSjyS93A.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/luxon.B0DcZ4Zp.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/react-dom.C2KtklHg.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/react-i18next.DFw_AlVb.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/@reduxjs.braiXup9.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/d3-format.D-TRB2rQ.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/d3-color.hIZ3Em3b.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/d3-interpolate.BDRB8R5j.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/d3-scale.BCznwpqF.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/d3-path.DAGKHp_v.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/d3-shape.uoVMWg3r.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/decimal.js-light.CEFkIFuC.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/es-toolkit.APmr5xSD.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/eventemitter3.BEPfYdO7.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/immer.B7w56gih.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/react-is.CkeW5AeS.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/react-redux.DxcJvio5.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/recharts.D4GxyQOo.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/sonner.DUpcttgk.js?v=frontfix-20260613c">
+    <link rel="modulepreload" crossorigin href="/assets/tailwind-merge.DxdGK6Xj.js?v=frontfix-20260613c">
+    <link rel="stylesheet" crossorigin href="/assets/index.BMp6-FP0.css?v=frontfix-20260613c">
+    <link rel="stylesheet" crossorigin href="/assets/geoip-front-theme.css?v=front-theme-20260923a">
+    <link rel="stylesheet" crossorigin href="/assets/geoip-front-server-filter.css?v=front-server-filter-20260723d">
+    <link rel="stylesheet" crossorigin href="/assets/geoip-front-login.css?v=front-login-20260923a">
+    <script>
+      (function () {
+        try {
+          var hasCookie = document.cookie && document.cookie.indexOf("nz-jwt=") !== -1;
+          var hasToken = !!(localStorage.getItem("token") || localStorage.getItem("nezha-token") || localStorage.getItem("jwt"));
+          if (hasCookie || hasToken) {
+            document.documentElement.classList.add("nz-authenticated");
+          }
+        } catch (_e) {}
+      })();
+    </script>
+    <style id="nz-auth-gate-style">
+      html:not(.nz-authenticated) #root {
+        display: none !important;
+      }
+      html.nz-authenticated #nz-login-gate {
+        display: none !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="nz-login-gate">
+      <div class="nz-bg-decor">
+        <div class="nz-bg-grid"></div>
+        <div class="nz-glow-orb nz-glow-orb-1"></div>
+        <div class="nz-glow-orb nz-glow-orb-2"></div>
+        <div class="nz-glow-orb nz-glow-orb-3"></div>
+      </div>
+      <div class="nz-top-bar">
+        <button type="button" class="nz-theme-btn" id="nz-theme-toggle-btn" aria-label="Toggle Theme">
+        </button>
+      </div>
+      <div class="nz-login-card" id="nz-login-card">
+        <div class="nz-card-header">
+          <div class="nz-logo-wrapper">
+            <div class="nz-logo-pulse"></div>
+            <div class="nz-logo-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="url(#nz-logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <defs>
+                  <linearGradient id="nz-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#38bdf8" />
+                    <stop offset="50%" stop-color="#818cf8" />
+                    <stop offset="100%" stop-color="#c084fc" />
+                  </linearGradient>
+                </defs>
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+              </svg>
+            </div>
+          </div>
+          <h1 class="nz-brand-title">哪吒监控</h1>
+          <div class="nz-brand-subtitle">NEZHA DASHBOARD · 访问网关</div>
+          <div class="nz-gateway-badge">
+            <span class="nz-pulse-dot"></span>
+            <span>身份认证网关已就绪</span>
+          </div>
+        </div>
+        <div class="nz-alert nz-alert-error" id="nz-alert-error">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="nz-error-text">用户名或密码错误</span>
+        </div>
+        <div class="nz-alert nz-alert-success" id="nz-alert-success">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+          <span id="nz-success-text">验证成功，正在进入系统...</span>
+        </div>
+        <form class="nz-form" id="nz-login-form" autocomplete="on">
+          <div class="nz-field-group">
+            <label class="nz-label" for="nz-username">用户名 / 账号</label>
+            <div class="nz-input-wrap">
+              <div class="nz-input-icon">
+                <svg viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              </div>
+              <input type="text" id="nz-username" class="nz-input" placeholder="请输入面板账号" required autocomplete="username" spellcheck="false" />
+            </div>
+          </div>
+          <div class="nz-field-group">
+            <label class="nz-label" for="nz-password">访问密码</label>
+            <div class="nz-input-wrap">
+              <div class="nz-input-icon">
+                <svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <input type="password" id="nz-password" class="nz-input" placeholder="请输入面板密码" required autocomplete="current-password" />
+              <button type="button" class="nz-pwd-toggle" id="nz-pwd-toggle" aria-label="Toggle Password Visibility">
+                <svg id="nz-eye-icon" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+              </button>
+            </div>
+          </div>
+          <div class="nz-form-options">
+            <label class="nz-remember-label">
+              <input type="checkbox" id="nz-remember-check" class="nz-remember-checkbox" />
+              <span>记住账号</span>
+            </label>
+            <a href="/dashboard/" class="nz-admin-link">
+              <span>管理后台</span>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </a>
+          </div>
+          <button type="submit" class="nz-submit-btn" id="nz-submit-btn">
+            <span class="nz-spinner"></span>
+            <span class="nz-btn-text">登 录 进 入</span>
+          </button>
+        </form>
+        <div class="nz-card-footer">
+          <div>哪吒监控系统 · 安全身份认证网关</div>
+          <div style="opacity: 0.6; margin-top: 2px;">End-to-End Encrypted Session</div>
+        </div>
+      </div>
+    </div>
+    <div id="root"></div>
+  </body>
+</html>

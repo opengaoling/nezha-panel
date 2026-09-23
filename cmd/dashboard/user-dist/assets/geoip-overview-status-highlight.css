@@ -1,0 +1,20 @@
+#root .server-overview > .geoip-overview-status-selected,
+#root .server-overview > [aria-pressed="true"],
+#root .server-overview > .ring-2 {
+  position: relative !important;
+  outline: 2px solid rgb(34 197 94) !important;
+  outline-offset: -2px !important;
+  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.18) !important;
+}
+
+#root .server-overview > .geoip-overview-status-selected::after,
+#root .server-overview > [aria-pressed="true"]::after,
+#root .server-overview > .ring-2::after {
+  content: "" !important;
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 20 !important;
+  pointer-events: none !important;
+  border: 2px solid rgb(34 197 94) !important;
+  border-radius: inherit !important;
+}

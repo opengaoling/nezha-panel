@@ -35,6 +35,10 @@ for i in $(seq 0 $(("$count"-1))); do
   version=$(yq -r ".[$i].version" "$TEMPLATES_FILE")
 
   if [[ -n $path && -n $repository && -n $version ]]; then
+    if [[ -d "$ROOT_DIR/cmd/dashboard/$path" && -f "$ROOT_DIR/cmd/dashboard/$path/index.html" && ( "$path" == "admin-dist" || "$path" == "user-dist" ) ]]; then
+      echo "Skipping $path: embedded repository frontend already present"
+      continue
+    fi
     download_and_extract "$repository" "$version" "$ROOT_DIR/cmd/dashboard/$path"
   fi
 done
