@@ -529,15 +529,6 @@
     } catch (_e) {}
     var hasStorageToken = !!storageToken;
 
-    // If visiting with ?redirect= pointing to dashboard, auto-forward to destination
-    try {
-      var searchParams = new URLSearchParams(window.location.search);
-      var redir = searchParams.get("redirect");
-      if (redir && redir.startsWith("/") && redir.indexOf("/dashboard") !== -1) {
-        window.location.replace(redir);
-        return;
-      }
-    } catch (_e) {}
 
     // If no credentials exist anywhere, definitely not logged in -> activate front disguise gate
     if (!hasCookie && !hasStorageToken) {
