@@ -487,32 +487,32 @@ func fallbackToFrontend(frontendDist fs.FS) func(*gin.Context) {
 		// official user frontend
 		regexp.MustCompile(`^/$`),
 		regexp.MustCompile(`^/login/?$`),
-		regexp.MustCompile(`^/server$`),
-		regexp.MustCompile(`^/server/\d*$`),
+		regexp.MustCompile(`^/server/?$`),
+		regexp.MustCompile(`^/server/\d*/?$`),
 		// backend frontend
-		regexp.MustCompile(`^/dashboard/$`),
-		regexp.MustCompile(`^/dashboard/login$`),
-		regexp.MustCompile(`^/dashboard/service$`),
-		regexp.MustCompile(`^/dashboard/cron$`),
-		regexp.MustCompile(`^/dashboard/notification$`),
-		regexp.MustCompile(`^/dashboard/alert-rule$`),
-		regexp.MustCompile(`^/dashboard/ddns$`),
-		regexp.MustCompile(`^/dashboard/nat$`),
-		regexp.MustCompile(`^/dashboard/server-group$`),
-		regexp.MustCompile(`^/dashboard/notification-group$`),
-		regexp.MustCompile(`^/dashboard/profile$`),
-		regexp.MustCompile(`^/dashboard/settings$`),
-		regexp.MustCompile(`^/dashboard/settings/user$`),
-		regexp.MustCompile(`^/dashboard/settings/online-user$`),
-		regexp.MustCompile(`^/dashboard/settings/waf$`),
-		regexp.MustCompile(`^/dashboard/settings/api-tokens$`),
+		regexp.MustCompile(`^/dashboard/?$`),
+		regexp.MustCompile(`^/dashboard/login/?$`),
+		regexp.MustCompile(`^/dashboard/service/?$`),
+		regexp.MustCompile(`^/dashboard/cron/?$`),
+		regexp.MustCompile(`^/dashboard/notification/?$`),
+		regexp.MustCompile(`^/dashboard/alert-rule/?$`),
+		regexp.MustCompile(`^/dashboard/ddns/?$`),
+		regexp.MustCompile(`^/dashboard/nat/?$`),
+		regexp.MustCompile(`^/dashboard/server-group/?$`),
+		regexp.MustCompile(`^/dashboard/notification-group/?$`),
+		regexp.MustCompile(`^/dashboard/profile/?$`),
+		regexp.MustCompile(`^/dashboard/settings/?$`),
+		regexp.MustCompile(`^/dashboard/settings/user/?$`),
+		regexp.MustCompile(`^/dashboard/settings/online-user/?$`),
+		regexp.MustCompile(`^/dashboard/settings/waf/?$`),
+		regexp.MustCompile(`^/dashboard/settings/api-tokens/?$`),
 		// 注意：这里的白名单决定哪些 URL 走 index.html fallback；漏一条就会把
 		// 直接刷新该页面变成 404（HTTP 状态码层面，body 仍是 index.html，所以
 		// 浏览器内 SPA 看起来正常，但 monitoring / 链接预览会以为站点挂了）。
 		// 新增前端路由时必须在 admin-frontend/src/main.tsx 与这里同步加。
-		regexp.MustCompile(`^/dashboard/transfer$`),
+		regexp.MustCompile(`^/dashboard/transfer/?$`),
 		regexp.MustCompile(`^/dashboard/terminal/.*$`),
-		regexp.MustCompile(`^/error$`),
+		regexp.MustCompile(`^/error/?$`),
 	}
 
 	getFallbackStatusCode := func(path string) int {
@@ -532,7 +532,14 @@ func fallbackToFrontend(frontendDist fs.FS) func(*gin.Context) {
 
 		// redirect for /dashboard to /dashboard/
 		if c.Request.URL.Path == "/dashboard" {
-			c.Redirect(http.StatusMovedPermanently, "/dashboard/")
+			target := "/dashboard/"
+			if singleton.Conf != nil && singleton.Conf.SecretPath != "" {
+				s := strings.Trim(singleton.Conf.SecretPath, "/")
+				if s != "" {
+					target = "/" + s + "/dashboard/"
+				}
+			}
+			c.Redirect(http.StatusMovedPermanently, target)
 			return
 		}
 

@@ -119,8 +119,8 @@ func secretPathHandler(next http.Handler) http.Handler {
 
 		// For requests without the secret path in the URL:
 		// Subresources (/assets/*, /dashboard/assets/*, static icons) and /api/*
-		// are allowed if authorized by cookie/header/PAT.
-		if (hasCookieSecret || hasHeaderSecret || hasPAT) && isSubresourceOrApi(reqPath) {
+		// are allowed if authorized by cookie/header/PAT, or if completing an OAuth2 callback.
+		if (hasCookieSecret || hasHeaderSecret || hasPAT || strings.HasPrefix(reqPath, "/api/v1/oauth2/callback")) && isSubresourceOrApi(reqPath) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -180,7 +180,8 @@ func initAntiProbeWAF(mw *jwt.GinJWTMiddleware) {
 				// Allow public frontend APIs, settings, profile check, and server stream for legitimate secret path visitors
 				if path == "/api/v1/setting" || path == "/api/v1/ws/server" || path == "/api/v1/server-group" ||
 					path == "/api/v1/service" || path == "/api/v1/profile" || strings.HasPrefix(path, "/api/v1/service/") ||
-					strings.HasPrefix(path, "/api/v1/server/") || strings.HasPrefix(path, "/server/") {
+					path == "/api/v1/server" || strings.HasPrefix(path, "/api/v1/server/") ||
+					path == "/server" || strings.HasPrefix(path, "/server/") {
 					return true
 				}
 				if strings.HasPrefix(path, "/dashboard") {

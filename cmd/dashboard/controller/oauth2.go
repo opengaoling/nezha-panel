@@ -215,7 +215,16 @@ func oauth2callback(jwtConfig *jwt.GinJWTMiddleware) func(c *gin.Context) (any, 
 
 		jwtConfig.SetCookie(c, tokenString)
 		setCSRFCookie(c)
-		c.Redirect(http.StatusFound, utils.IfOr(state.Action == model.RTypeBind, "/dashboard/profile?oauth2=true", "/dashboard/login?oauth2=true"))
+		prefix := ""
+		if singleton.Conf != nil && singleton.Conf.SecretPath != "" {
+			secret := strings.Trim(singleton.Conf.SecretPath, "/")
+			if secret != "" {
+				prefix = "/" + secret
+				secure := c.Request.URL.Scheme == "https" || c.Request.TLS != nil
+				c.SetCookie(SecretPathCookieName, secret, 365*24*3600, "/", "", secure, false)
+			}
+		}
+		c.Redirect(http.StatusFound, prefix+utils.IfOr(state.Action == model.RTypeBind, "/dashboard/profile?oauth2=true", "/dashboard/login?oauth2=true"))
 
 		return nil, errNoop
 	}

@@ -123,7 +123,15 @@ func updateConfig(c *gin.Context) (any, error) {
 		singleton.Conf.HideNewServersForGuest = *sf.HideNewServersForGuest
 	}
 	if sf.SecretPath != nil {
-		singleton.Conf.SecretPath = strings.Trim(strings.TrimSpace(*sf.SecretPath), "/")
+		clean := strings.Trim(strings.TrimSpace(*sf.SecretPath), "/")
+		if clean != "" {
+			for _, r := range clean {
+				if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')) {
+					return nil, errors.New("secret_path must contain only letters and digits")
+				}
+			}
+		}
+		singleton.Conf.SecretPath = clean
 	}
 	mcpWasEnabled := singleton.Conf.MCPEnabled()
 	mcpNext := resolveSettingEnableMCP(sf.EnableMCP, mcpWasEnabled)

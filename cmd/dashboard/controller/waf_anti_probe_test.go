@@ -382,4 +382,18 @@ func TestSecretPathProtectionAndRouting(t *testing.T) {
 	handler.ServeHTTP(wPAT, reqPAT)
 	assert.Equal(t, http.StatusOK, wPAT.Code)
 	assert.Equal(t, "server-ok", wPAT.Body.String())
+
+	// 6. OAuth2 callback path is permitted through secretPathHandler
+	reqOAuthCallback := httptest.NewRequest("GET", "/api/v1/oauth2/callback", nil)
+	wOAuthCallback := httptest.NewRecorder()
+	handler.ServeHTTP(wOAuthCallback, reqOAuthCallback)
+	// Handled by router (returns 404 from Gin router because route not registered in mock, not anti-probe plaintext 404)
+	assert.NotEqual(t, "404 page not found\n", wOAuthCallback.Body.String(), "OAuth2 callback must pass secretPathHandler")
+
+	// 7. Legitimate secret path access to /server and /dashboard/service/
+	reqDashServiceTrailingSlash := httptest.NewRequest("GET", "/"+secret+"/dashboard/service/", nil)
+	wDashServiceTrailingSlash := httptest.NewRecorder()
+	handler.ServeHTTP(wDashServiceTrailingSlash, reqDashServiceTrailingSlash)
+	assert.Equal(t, http.StatusOK, wDashServiceTrailingSlash.Code)
+	assert.Equal(t, "dashboard-service-ok", wDashServiceTrailingSlash.Body.String())
 }
