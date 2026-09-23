@@ -1,10 +1,10 @@
 (function () {
   "use strict";
 
-  var STORAGE_KEY = "geoip-admin-server-group-filter";
-  var STATUS_STORAGE_KEY = "geoip-admin-server-status-filter";
-  var FACET_STORAGE_KEY = "geoip-admin-server-facet-filter";
-  var FILTER_ID = "geoip-admin-server-group-filter";
+  var STORAGE_KEY = "custom-admin-server-group-filter";
+  var STATUS_STORAGE_KEY = "custom-admin-server-status-filter";
+  var FACET_STORAGE_KEY = "custom-admin-server-facet-filter";
+  var FILTER_ID = "custom-admin-server-group-filter";
   var ALL_VALUE = "__all__";
   var STATUS_ALL = "all";
   var STATUS_ONLINE = "online";
@@ -115,8 +115,8 @@
           status.set(id, isOnline(server));
           facets.set(id, {
             system: facetValue(server.host && server.host.platform),
-            region: facetValue((server.geoip && server.geoip.country_code) || server.country_code),
-            organization: facetValue((server.geoip && server.geoip.organization) || server.organization)
+            region: facetValue((server.geo_info && server.geo_info.country_code) || server.country_code),
+            organization: facetValue((server.geo_info && server.geo_info.organization) || server.organization)
           });
         });
         state.serverStatus = status;
@@ -161,17 +161,17 @@
       if (!cell) return;
       var id = serverIdFromCell(cell);
       var online = state.serverStatus.get(id);
-      var dot = cell.querySelector(":scope > .geoip-admin-server-status-dot");
+      var dot = cell.querySelector(":scope > .custom-admin-server-status-dot");
       if (!dot) {
         dot = document.createElement("span");
-        dot.className = "geoip-admin-server-status-dot";
+        dot.className = "custom-admin-server-status-dot";
         dot.setAttribute("aria-hidden", "true");
         cell.insertBefore(dot, cell.firstChild);
       }
       var label = online === true ? "在线" : online === false ? "离线" : "未知";
       dot.setAttribute("data-status", online === true ? "online" : online === false ? "offline" : "unknown");
       dot.title = label;
-      cell.setAttribute("data-geoip-admin-server-status", label);
+      cell.setAttribute("data-custom-admin-server-status", label);
     });
   }
 
@@ -188,9 +188,9 @@
   }
 
   function isFilterHidden(row) {
-    return row.getAttribute("data-geoip-group-filter-hidden") === "true" ||
-      row.getAttribute("data-geoip-status-filter-hidden") === "true" ||
-      row.getAttribute("data-geoip-facet-filter-hidden") === "true";
+    return row.getAttribute("data-custom-group-filter-hidden") === "true" ||
+      row.getAttribute("data-custom-status-filter-hidden") === "true" ||
+      row.getAttribute("data-custom-facet-filter-hidden") === "true";
   }
 
   function serverRows() {
@@ -339,9 +339,9 @@
       rows.forEach(function (row) {
         var id = serverIdFromRow(row);
         var shouldHideForGroup = !!(id && group && !group.servers.has(id));
-        var isGroupHidden = row.getAttribute("data-geoip-group-filter-hidden") === "true";
-        if (shouldHideForGroup && !isGroupHidden) row.setAttribute("data-geoip-group-filter-hidden", "true");
-        if (!shouldHideForGroup && isGroupHidden) row.removeAttribute("data-geoip-group-filter-hidden");
+        var isGroupHidden = row.getAttribute("data-custom-group-filter-hidden") === "true";
+        if (shouldHideForGroup && !isGroupHidden) row.setAttribute("data-custom-group-filter-hidden", "true");
+        if (!shouldHideForGroup && isGroupHidden) row.removeAttribute("data-custom-group-filter-hidden");
 
         var online = id && state.serverStatus ? state.serverStatus.get(id) : undefined;
         var shouldHideForStatus = state.selectedStatus === STATUS_ONLINE
@@ -349,14 +349,14 @@
           : state.selectedStatus === STATUS_OFFLINE
             ? online !== false
             : false;
-        var isStatusHidden = row.getAttribute("data-geoip-status-filter-hidden") === "true";
-        if (shouldHideForStatus && !isStatusHidden) row.setAttribute("data-geoip-status-filter-hidden", "true");
-        if (!shouldHideForStatus && isStatusHidden) row.removeAttribute("data-geoip-status-filter-hidden");
+        var isStatusHidden = row.getAttribute("data-custom-status-filter-hidden") === "true";
+        if (shouldHideForStatus && !isStatusHidden) row.setAttribute("data-custom-status-filter-hidden", "true");
+        if (!shouldHideForStatus && isStatusHidden) row.removeAttribute("data-custom-status-filter-hidden");
 
         var shouldHideForFacet = !!id && !matchesFacets(id);
-        var isFacetHidden = row.getAttribute("data-geoip-facet-filter-hidden") === "true";
-        if (shouldHideForFacet && !isFacetHidden) row.setAttribute("data-geoip-facet-filter-hidden", "true");
-        if (!shouldHideForFacet && isFacetHidden) row.removeAttribute("data-geoip-facet-filter-hidden");
+        var isFacetHidden = row.getAttribute("data-custom-facet-filter-hidden") === "true";
+        if (shouldHideForFacet && !isFacetHidden) row.setAttribute("data-custom-facet-filter-hidden", "true");
+        if (!shouldHideForFacet && isFacetHidden) row.removeAttribute("data-custom-facet-filter-hidden");
       });
       updateButtons();
       applyServerStatus();
@@ -380,7 +380,7 @@
   function makeButton(group) {
     var button = document.createElement("button");
     button.type = "button";
-    button.className = "geoip-admin-server-group-filter__button";
+    button.className = "custom-admin-server-group-filter__button";
     button.setAttribute("data-group-id", group.id);
     button.setAttribute("aria-pressed", group.id === state.selected ? "true" : "false");
     button.title = group.name;
@@ -396,7 +396,7 @@
   function makeStatusButton(value, label) {
     var button = document.createElement("button");
     button.type = "button";
-    button.className = "geoip-admin-server-group-filter__button";
+    button.className = "custom-admin-server-group-filter__button";
     button.setAttribute("data-status-filter", value);
     button.setAttribute("aria-pressed", value === state.selectedStatus ? "true" : "false");
     button.textContent = label;
@@ -443,7 +443,7 @@
 
   function makeFacetControl(key, label) {
     var control = document.createElement("label");
-    control.className = "geoip-admin-server-group-filter__facet";
+    control.className = "custom-admin-server-group-filter__facet";
     var text = document.createElement("span");
     text.textContent = label;
     var select = document.createElement("select");
@@ -479,14 +479,14 @@
 
       var wrapper = document.createElement("section");
       wrapper.id = FILTER_ID;
-      wrapper.className = "geoip-admin-server-group-filter";
+      wrapper.className = "custom-admin-server-group-filter";
 
       var label = document.createElement("span");
-      label.className = "geoip-admin-server-group-filter__label";
+      label.className = "custom-admin-server-group-filter__label";
       label.textContent = "服务器分组";
 
       var list = document.createElement("div");
-      list.className = "geoip-admin-server-group-filter__list";
+      list.className = "custom-admin-server-group-filter__list";
       list.appendChild(makeButton({ id: ALL_VALUE, name: "全部服务器", servers: new Set() }));
       groups.forEach(function (group) { list.appendChild(makeButton(group)); });
 
@@ -494,12 +494,12 @@
       wrapper.appendChild(list);
 
       var statusGroup = document.createElement("div");
-      statusGroup.className = "geoip-admin-server-group-filter__status";
+      statusGroup.className = "custom-admin-server-group-filter__status";
       var statusLabel = document.createElement("span");
-      statusLabel.className = "geoip-admin-server-group-filter__label";
+      statusLabel.className = "custom-admin-server-group-filter__label";
       statusLabel.textContent = "在线状态";
       var statusList = document.createElement("div");
-      statusList.className = "geoip-admin-server-group-filter__status-list";
+      statusList.className = "custom-admin-server-group-filter__status-list";
       statusList.appendChild(makeStatusButton(STATUS_ALL, "全部"));
       statusList.appendChild(makeStatusButton(STATUS_ONLINE, "在线服务器"));
       statusList.appendChild(makeStatusButton(STATUS_OFFLINE, "离线服务器"));
@@ -508,7 +508,7 @@
       wrapper.appendChild(statusGroup);
 
       var facets = document.createElement("div");
-      facets.className = "geoip-admin-server-group-filter__facets";
+      facets.className = "custom-admin-server-group-filter__facets";
       facets.appendChild(makeFacetControl("system", "系统"));
       facets.appendChild(makeFacetControl("region", "地区"));
       facets.appendChild(makeFacetControl("organization", "组织"));

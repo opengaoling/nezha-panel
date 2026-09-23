@@ -7,8 +7,8 @@
         const root = document.documentElement
         const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)")
         const mobileUA = /Mobile|Android|iPhone|iPod|IEMobile|BlackBerry|Opera Mini|Windows Phone/i.test(navigator.userAgent)
-        root.classList.toggle("geoip-mobile-ua", mobileUA)
-        window.GeoIPMobileUA = mobileUA
+        root.classList.toggle("custom-mobile-ua", mobileUA)
+        window.CustomMobileUA = mobileUA
 
         const resolveTheme = (theme) =>
           theme === "system" ? (mediaQuery.matches ? "dark" : "light") : theme
@@ -75,11 +75,11 @@
     <meta name="apple-mobile-web-app-title" content="Nezha Monitoring" />
     <link rel="apple-touch-icon" href="/android-chrome-192x192.png" />
 
-    <link rel="stylesheet" crossorigin href="/assets/geoip-front-login.css?v=front-login-20260923d">
-    <script src="/assets/geoip-front-login.js?v=front-login-20260923d"></script>
-    <script src="/assets/geoip-front-theme.js?v=front-theme-20260923a" defer></script>
-    <script src="/assets/geoip-front-server-filter.js?v=front-server-filter-20260723d" defer></script>
-    <script type="module" crossorigin src="/assets/index.geoip-mobile-flagcss-20260611.js?v=frontfix-20260908-footer"></script>
+    <link rel="stylesheet" crossorigin href="/assets/custom-front-login.css?v=front-login-20260923d">
+    <script src="/assets/custom-front-login.js?v=front-login-20260923d"></script>
+    <script src="/assets/custom-front-theme.js?v=front-theme-20260923a" defer></script>
+    <script src="/assets/custom-front-server-filter.js?v=front-server-filter-20260723d" defer></script>
+    <script type="module" crossorigin src="/assets/index.custom-mobile-flagcss-20260611.js?v=frontfix-20260908-footer"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime.Cyuzqnbw.js?v=frontfix-20260613c">
     <link rel="modulepreload" crossorigin href="/assets/@floating-ui.Y9xXyXUR.js?v=frontfix-20260613c">
     <link rel="modulepreload" crossorigin href="/assets/react-router.Broep3A8.js?v=frontfix-20260613c">
@@ -117,8 +117,8 @@
     <link rel="modulepreload" crossorigin href="/assets/sonner.DUpcttgk.js?v=frontfix-20260613c">
     <link rel="modulepreload" crossorigin href="/assets/tailwind-merge.DxdGK6Xj.js?v=frontfix-20260613c">
     <link rel="stylesheet" crossorigin href="/assets/index.BMp6-FP0.css?v=frontfix-20260613c">
-    <link rel="stylesheet" crossorigin href="/assets/geoip-front-theme.css?v=front-theme-20260923a">
-    <link rel="stylesheet" crossorigin href="/assets/geoip-front-server-filter.css?v=front-server-filter-20260723d">
+    <link rel="stylesheet" crossorigin href="/assets/custom-front-theme.css?v=front-theme-20260923a">
+    <link rel="stylesheet" crossorigin href="/assets/custom-front-server-filter.css?v=front-server-filter-20260723d">
   </head>
   <body>
     <div id="root"></div>

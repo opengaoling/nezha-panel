@@ -1,9 +1,9 @@
 (function () {
-  if (window.__geoipOverviewStatusHighlightInstalled) return;
-  window.__geoipOverviewStatusHighlightInstalled = true;
+  if (window.__customOverviewStatusHighlightInstalled) return;
+  window.__customOverviewStatusHighlightInstalled = true;
 
-  var selectedClass = "geoip-overview-status-selected";
-  var styleId = "geoip-overview-status-highlight-style";
+  var selectedClass = "custom-overview-status-selected";
+  var styleId = "custom-overview-status-highlight-style";
   var currentStatus = "online";
   var defaultApplied = false;
   var syncing = false;
@@ -143,8 +143,8 @@
     var cards = overviewCards();
     if (cards.length < 3) return false;
     ["all", "online", "offline"].forEach(function (status, index) {
-      if (cards[index].__geoipOverviewStatusBound) return;
-      cards[index].__geoipOverviewStatusBound = true;
+      if (cards[index].__customOverviewStatusBound) return;
+      cards[index].__customOverviewStatusBound = true;
       cards[index].addEventListener("click", function () {
         lastUserSelectedAt = Date.now();
         applySelected(status);

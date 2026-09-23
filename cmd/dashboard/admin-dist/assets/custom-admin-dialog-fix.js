@@ -1,11 +1,11 @@
 (function () {
-  var ATTR = "data-geoip-server-group-dialog";
-  var FORM_ATTR = "data-geoip-server-group-form";
-  var SERVER_FIELD_ATTR = "data-geoip-server-group-field";
-  var SELECTOR_ATTR = "data-geoip-server-group-selector";
-  var ACTIONS_ATTR = "data-geoip-server-group-actions";
-  var BODY_CLASS = "geoip-server-group-dialog-open";
-  var PAGE_CLASS = "geoip-server-group-page";
+  var ATTR = "data-custom-server-group-dialog";
+  var FORM_ATTR = "data-custom-server-group-form";
+  var SERVER_FIELD_ATTR = "data-custom-server-group-field";
+  var SELECTOR_ATTR = "data-custom-server-group-selector";
+  var ACTIONS_ATTR = "data-custom-server-group-actions";
+  var BODY_CLASS = "custom-server-group-dialog-open";
+  var PAGE_CLASS = "custom-server-group-page";
   var TITLE_MARKERS = [
     "编辑服务器分组",
     "创建服务器分组",

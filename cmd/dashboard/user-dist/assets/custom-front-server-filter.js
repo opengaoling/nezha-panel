@@ -1,8 +1,8 @@
 (function () {
   "use strict";
 
-  var FILTER_ID = "geoip-front-server-filter";
-  var STORAGE_KEY = "geoip-front-server-facet-filter";
+  var FILTER_ID = "custom-front-server-filter";
+  var STORAGE_KEY = "custom-front-server-facet-filter";
   var ALL_VALUE = "__all__";
   var UNKNOWN_VALUE = "__unknown__";
   var state = {
@@ -71,7 +71,7 @@
   }
 
   function syncFromAppCache() {
-    var appCache = window.__geoipStaticServerCache;
+    var appCache = window.__customStaticServerCache;
     if (!(appCache instanceof Map) || appCache.size === 0) return;
     appCache.forEach(function (server, id) {
       var key = String(id || (server && server.id) || "");
@@ -109,7 +109,7 @@
 
   function installWebSocketTracker() {
     var NativeWebSocket = window.WebSocket;
-    if (!NativeWebSocket || NativeWebSocket.__geoipFrontFilterWrapped) return;
+    if (!NativeWebSocket || NativeWebSocket.__customFrontFilterWrapped) return;
     function TrackedWebSocket(url, protocols) {
       var socket = protocols === undefined
         ? new NativeWebSocket(url)
@@ -118,7 +118,7 @@
     }
     Object.setPrototypeOf(TrackedWebSocket, NativeWebSocket);
     TrackedWebSocket.prototype = NativeWebSocket.prototype;
-    TrackedWebSocket.__geoipFrontFilterWrapped = true;
+    TrackedWebSocket.__customFrontFilterWrapped = true;
     window.WebSocket = TrackedWebSocket;
   }
 
@@ -160,7 +160,7 @@
 
   function makeControl(key, label) {
     var control = document.createElement("label");
-    control.className = "geoip-front-server-filter__control";
+    control.className = "custom-front-server-filter__control";
     var text = document.createElement("span");
     text.textContent = label;
     var select = document.createElement("select");
@@ -187,9 +187,9 @@
     if (!controls || !controls.parentElement) return;
     var filter = document.createElement("section");
     filter.id = FILTER_ID;
-    filter.className = "geoip-front-server-filter";
+    filter.className = "custom-front-server-filter";
     var title = document.createElement("span");
-    title.className = "geoip-front-server-filter__title";
+    title.className = "custom-front-server-filter__title";
     title.textContent = "筛选";
     filter.appendChild(title);
     filter.appendChild(makeControl("system", "系统"));
@@ -227,11 +227,11 @@
         if (hidden) {
           hiddenCount += 1;
           card.hidden = true;
-          card.setAttribute("data-geoip-front-filter-hidden", "true");
+          card.setAttribute("data-custom-front-filter-hidden", "true");
           card.style.setProperty("display", "none", "important");
         } else {
           card.hidden = false;
-          card.removeAttribute("data-geoip-front-filter-hidden");
+          card.removeAttribute("data-custom-front-filter-hidden");
           card.style.removeProperty("display");
         }
       });

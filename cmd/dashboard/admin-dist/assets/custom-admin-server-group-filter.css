@@ -1,5 +1,5 @@
 /* Server group filter for the admin server table. */
-#root .geoip-admin-server-group-filter {
+#root .custom-admin-server-group-filter {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -9,14 +9,14 @@
   margin: 0.25rem 0 1rem;
 }
 
-#root .geoip-admin-server-group-filter__label {
+#root .custom-admin-server-group-filter__label {
   flex: 0 0 auto;
   color: hsl(var(--muted-foreground));
   font-size: 0.875rem;
   font-weight: 500;
 }
 
-#root .geoip-admin-server-group-filter__list {
+#root .custom-admin-server-group-filter__list {
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
@@ -24,7 +24,7 @@
   gap: 0.375rem;
 }
 
-#root .geoip-admin-server-group-filter__status {
+#root .custom-admin-server-group-filter__status {
   display: flex;
   min-width: 0;
   flex: 0 0 auto;
@@ -32,13 +32,13 @@
   gap: 0.5rem;
 }
 
-#root .geoip-admin-server-group-filter__status-list {
+#root .custom-admin-server-group-filter__status-list {
   display: inline-flex;
   min-width: 0;
   gap: 0.375rem;
 }
 
-#root .geoip-admin-server-group-filter__facets {
+#root .custom-admin-server-group-filter__facets {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -47,7 +47,7 @@
   gap: 0.5rem;
 }
 
-#root .geoip-admin-server-group-filter__facet {
+#root .custom-admin-server-group-filter__facet {
   display: inline-flex;
   min-width: 0;
   align-items: center;
@@ -57,7 +57,7 @@
   font-weight: 500;
 }
 
-#root .geoip-admin-server-group-filter__facet select {
+#root .custom-admin-server-group-filter__facet select {
   width: auto;
   min-width: 7rem;
   max-width: min(16rem, 40vw);
@@ -72,7 +72,7 @@
   font-size: 0.8125rem;
 }
 
-#root .geoip-admin-server-group-filter__button {
+#root .custom-admin-server-group-filter__button {
   max-width: min(15rem, 100%);
   min-height: 2rem;
   border: 1px solid hsl(var(--border));
@@ -90,33 +90,33 @@
   white-space: nowrap;
 }
 
-#root .geoip-admin-server-group-filter__button:hover {
+#root .custom-admin-server-group-filter__button:hover {
   border-color: hsl(var(--primary));
 }
 
-#root .geoip-admin-server-group-filter__button[aria-pressed="true"] {
+#root .custom-admin-server-group-filter__button[aria-pressed="true"] {
   border-color: rgb(34 197 94);
   background: rgb(34 197 94 / 0.12);
   color: rgb(22 101 52);
 }
 
-.dark #root .geoip-admin-server-group-filter__button[aria-pressed="true"] {
+.dark #root .custom-admin-server-group-filter__button[aria-pressed="true"] {
   color: rgb(134 239 172);
 }
 
-#root tr[data-geoip-group-filter-hidden="true"] {
+#root tr[data-custom-group-filter-hidden="true"] {
   display: none !important;
 }
 
-#root tr[data-geoip-status-filter-hidden="true"] {
+#root tr[data-custom-status-filter-hidden="true"] {
   display: none !important;
 }
 
-#root tr[data-geoip-facet-filter-hidden="true"] {
+#root tr[data-custom-facet-filter-hidden="true"] {
   display: none !important;
 }
 
-#root .geoip-admin-server-status-dot {
+#root .custom-admin-server-status-dot {
   display: inline-block;
   width: 0.5rem;
   height: 0.5rem;
@@ -128,48 +128,48 @@
   box-shadow: 0 0 0 2px rgb(148 163 184 / 0.16);
 }
 
-#root .geoip-admin-server-status-dot[data-status="online"] {
+#root .custom-admin-server-status-dot[data-status="online"] {
   background: rgb(34 197 94);
   box-shadow: 0 0 0 2px rgb(34 197 94 / 0.18);
 }
 
-#root .geoip-admin-server-status-dot[data-status="offline"] {
+#root .custom-admin-server-status-dot[data-status="offline"] {
   background: rgb(239 68 68);
   box-shadow: 0 0 0 2px rgb(239 68 68 / 0.16);
 }
 
 @media (max-width: 640px) {
-  #root .geoip-admin-server-group-filter {
+  #root .custom-admin-server-group-filter {
     align-items: flex-start;
     flex-direction: column;
   }
 
-  #root .geoip-admin-server-group-filter__list {
+  #root .custom-admin-server-group-filter__list {
     width: 100%;
   }
 
-  #root .geoip-admin-server-group-filter__status {
+  #root .custom-admin-server-group-filter__status {
     width: 100%;
     align-items: flex-start;
     flex-direction: column;
   }
 
-  #root .geoip-admin-server-group-filter__status-list {
+  #root .custom-admin-server-group-filter__status-list {
     width: 100%;
     flex-wrap: wrap;
   }
 
-  #root .geoip-admin-server-group-filter__facets {
+  #root .custom-admin-server-group-filter__facets {
     align-items: stretch;
     flex-direction: column;
   }
 
-  #root .geoip-admin-server-group-filter__facet {
+  #root .custom-admin-server-group-filter__facet {
     width: 100%;
     justify-content: space-between;
   }
 
-  #root .geoip-admin-server-group-filter__facet select {
+  #root .custom-admin-server-group-filter__facet select {
     width: min(72%, 18rem);
     max-width: 72%;
   }

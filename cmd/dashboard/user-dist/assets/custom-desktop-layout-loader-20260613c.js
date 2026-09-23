@@ -1,9 +1,9 @@
 (function () {
-  var desktopCssId = 'geoip-desktop-layout-fix';
-  var desktopCssHref = '/assets/geoip-desktop-layout-fix-20260613c.css?v=front-theme-20260617a';
+  var desktopCssId = 'custom-desktop-layout-fix';
+  var desktopCssHref = '/assets/custom-desktop-layout-fix-20260613c.css?v=front-theme-20260617a';
 
   function isDesktopLayout() {
-    return !document.documentElement.classList.contains('geoip-mobile-ua') && window.innerWidth >= 900;
+    return !document.documentElement.classList.contains('custom-mobile-ua') && window.innerWidth >= 900;
   }
 
   function syncDesktopCss() {
@@ -13,7 +13,7 @@
       if (existing) {
         existing.parentNode.removeChild(existing);
       }
-      document.documentElement.style.removeProperty('--geoip-desktop-name-col');
+      document.documentElement.style.removeProperty('--custom-desktop-name-col');
       return false;
     }
 
@@ -43,7 +43,7 @@
     var rowLeft = row.getBoundingClientRect().left;
     var nameWidth = Math.round(targetLeft - rowLeft - 10);
     if (nameWidth >= 120 && nameWidth <= 520) {
-      document.documentElement.style.setProperty('--geoip-desktop-name-col', nameWidth + 'px');
+      document.documentElement.style.setProperty('--custom-desktop-name-col', nameWidth + 'px');
     }
   }
 

@@ -1,6 +1,6 @@
 (function () {
-  if (window.__geoipDashboardLinkFixInstalled) return;
-  window.__geoipDashboardLinkFixInstalled = true;
+  if (window.__customDashboardLinkFixInstalled) return;
+  window.__customDashboardLinkFixInstalled = true;
 
   function getSecretPrefix() {
     try {
@@ -78,7 +78,7 @@
 
       link.href = dashboardUrl();
       setLinkText(link, "后台管理");
-      link.setAttribute("data-geoip-dashboard-entry", "dashboard");
+      link.setAttribute("data-custom-dashboard-entry", "dashboard");
     }
   }
 

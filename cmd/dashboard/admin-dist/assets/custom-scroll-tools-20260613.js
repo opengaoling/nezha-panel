@@ -110,11 +110,11 @@
 
   function mount() {
     if (!document.body) return;
-    var tools = document.getElementById("geoip-scroll-tools");
+    var tools = document.getElementById("custom-scroll-tools");
     if (!tools) {
       tools = document.createElement("div");
-      tools.id = "geoip-scroll-tools";
-      tools.className = "geoip-scroll-tools";
+      tools.id = "custom-scroll-tools";
+      tools.className = "custom-scroll-tools";
       tools.appendChild(makeButton("回到顶部", '<path d="m18 15-6-6-6 6"/><path d="M12 9v12"/><path d="M5 3h14"/>', true));
       tools.appendChild(makeButton("滚动到底部", '<path d="m6 9 6 6 6-6"/><path d="M12 15V3"/><path d="M5 21h14"/>', false));
       document.body.appendChild(tools);

@@ -111,12 +111,12 @@
 }
 
 /* Server group editor: keep long selected server names inside the selector. */
-body.geoip-server-group-page #root [role="dialog"] {
+body.custom-server-group-page #root [role="dialog"] {
   width: min(calc(100vw - 1rem), 76rem) !important;
   max-width: min(calc(100vw - 1rem), 76rem) !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] {
+#root [role="dialog"][data-custom-server-group-dialog="true"] {
   display: flex !important;
   width: min(calc(100vw - 1rem), 76rem) !important;
   max-width: min(calc(100vw - 1rem), 76rem) !important;
@@ -125,17 +125,17 @@ body.geoip-server-group-page #root [role="dialog"] {
   overflow: hidden !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-radix-scroll-area-root],
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-radix-scroll-area-viewport],
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-radix-scroll-area-viewport] > div {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-radix-scroll-area-root],
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-radix-scroll-area-viewport],
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-radix-scroll-area-viewport] > div {
   min-height: 0 !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-radix-scroll-area-viewport] > div {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-radix-scroll-area-viewport] > div {
   display: block !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] form[data-geoip-server-group-form="true"] {
+#root [role="dialog"][data-custom-server-group-dialog="true"] form[data-custom-server-group-form="true"] {
   display: flex !important;
   flex-direction: column !important;
   height: auto !important;
@@ -146,7 +146,7 @@ body.geoip-server-group-page #root [role="dialog"] {
   overscroll-behavior: contain !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-field="servers"] {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-field="servers"] {
   display: flex !important;
   min-height: 0 !important;
   flex: 1 1 auto !important;
@@ -154,12 +154,12 @@ body.geoip-server-group-page #root [role="dialog"] {
   overflow: hidden !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-field="servers"] > div {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-field="servers"] > div {
   min-height: 0 !important;
   overflow: hidden !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-selector="true"] {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-selector="true"] {
   align-items: flex-start !important;
   min-height: 2.5rem !important;
   max-height: min(26dvh, 8rem) !important;
@@ -167,13 +167,13 @@ body.geoip-server-group-page #root [role="dialog"] {
   box-sizing: border-box !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-selector="true"] > div {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-selector="true"] > div {
   min-width: 0 !important;
   align-items: flex-start !important;
   gap: 0.375rem !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-selector="true"] > div > div:first-child {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-selector="true"] > div > div:first-child {
   min-width: 0 !important;
   max-height: min(22dvh, 6.5rem) !important;
   align-items: flex-start !important;
@@ -185,14 +185,14 @@ body.geoip-server-group-page #root [role="dialog"] {
   scrollbar-gutter: stable !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-selector="true"] > div > div:first-child > div {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-selector="true"] > div > div:first-child > div {
   max-width: 100% !important;
   min-width: 0 !important;
   overflow-wrap: anywhere !important;
   white-space: normal !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-actions="true"] {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-actions="true"] {
   position: sticky !important;
   left: auto !important;
   right: auto !important;
@@ -214,7 +214,7 @@ body.geoip-server-group-page #root [role="dialog"] {
   background: hsl(var(--background) / 0.98) !important;
 }
 
-#root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-actions="true"] button {
+#root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-actions="true"] button {
   max-width: 100% !important;
   flex: 0 0 auto !important;
   margin-top: 0 !important;
@@ -222,42 +222,42 @@ body.geoip-server-group-page #root [role="dialog"] {
 }
 
 @media (max-width: 360px) {
-  #root [role="dialog"][data-geoip-server-group-dialog="true"] [data-geoip-server-group-actions="true"] button {
+  #root [role="dialog"][data-custom-server-group-dialog="true"] [data-custom-server-group-actions="true"] button {
     flex: 1 1 auto !important;
   }
 }
 
-body.geoip-server-group-dialog-open [data-radix-popper-content-wrapper] {
+body.custom-server-group-dialog-open [data-radix-popper-content-wrapper] {
   max-width: calc(100vw - 1rem) !important;
 }
 
-body.geoip-server-group-dialog-open [cmdk-root],
-body.geoip-server-group-dialog-open [cmdk-list],
-body.geoip-server-group-dialog-open [cmdk-group],
-body.geoip-server-group-dialog-open [cmdk-item],
-body.geoip-server-group-dialog-open [cmdk-item] * {
+body.custom-server-group-dialog-open [cmdk-root],
+body.custom-server-group-dialog-open [cmdk-list],
+body.custom-server-group-dialog-open [cmdk-group],
+body.custom-server-group-dialog-open [cmdk-item],
+body.custom-server-group-dialog-open [cmdk-item] * {
   min-width: 0 !important;
   max-width: 100% !important;
 }
 
-body.geoip-server-group-dialog-open [cmdk-root] {
+body.custom-server-group-dialog-open [cmdk-root] {
   width: min(34rem, calc(100vw - 1rem)) !important;
 }
 
-body.geoip-server-group-dialog-open [cmdk-list] {
+body.custom-server-group-dialog-open [cmdk-list] {
   max-height: min(50dvh, 22rem) !important;
   overflow-x: hidden !important;
   overflow-y: auto !important;
 }
 
-body.geoip-server-group-dialog-open [cmdk-item] {
+body.custom-server-group-dialog-open [cmdk-item] {
   height: auto !important;
   min-height: 2rem !important;
   align-items: flex-start !important;
   white-space: normal !important;
 }
 
-body.geoip-server-group-dialog-open [cmdk-item] span {
+body.custom-server-group-dialog-open [cmdk-item] span {
   overflow-wrap: anywhere !important;
   word-break: break-word !important;
   white-space: normal !important;

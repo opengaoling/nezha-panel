@@ -1,4 +1,4 @@
-#root .geoip-front-server-filter {
+#root .custom-front-server-filter {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -8,13 +8,13 @@
   margin-top: 0.75rem;
 }
 
-#root .geoip-front-server-filter__title {
+#root .custom-front-server-filter__title {
   color: hsl(var(--muted-foreground));
   font-size: 0.8125rem;
   font-weight: 600;
 }
 
-#root .geoip-front-server-filter__control {
+#root .custom-front-server-filter__control {
   display: inline-flex;
   min-width: 0;
   align-items: center;
@@ -24,7 +24,7 @@
   font-weight: 500;
 }
 
-#root .geoip-front-server-filter__control select {
+#root .custom-front-server-filter__control select {
   min-width: 7rem;
   max-width: min(16rem, 38vw);
   height: 2rem;
@@ -38,22 +38,22 @@
   font-size: 0.8125rem;
 }
 
-#root [data-geoip-front-filter-hidden="true"] {
+#root [data-custom-front-filter-hidden="true"] {
   display: none !important;
 }
 
 @media (max-width: 640px) {
-  #root .geoip-front-server-filter {
+  #root .custom-front-server-filter {
     align-items: stretch;
     flex-direction: column;
   }
 
-  #root .geoip-front-server-filter__control {
+  #root .custom-front-server-filter__control {
     width: 100%;
     justify-content: space-between;
   }
 
-  #root .geoip-front-server-filter__control select {
+  #root .custom-front-server-filter__control select {
     width: min(72%, 18rem);
     max-width: 72%;
   }

@@ -1,17 +1,17 @@
 (function () {
-  if (window.__geoipFrontThemeInstalled) return;
-  window.__geoipFrontThemeInstalled = true;
+  if (window.__customFrontThemeInstalled) return;
+  window.__customFrontThemeInstalled = true;
 
   // Enable OS/platform column in card view
   window.FixedTopServerName = true;
 
   var version = "front-theme-20260923a";
   var scripts = [
-    "/assets/geoip-dashboard-link-fix-20260614.js",
-    "/assets/geoip-auth-guard.js",
-    "/assets/geoip-overview-status-highlight.js",
-    "/assets/geoip-desktop-layout-loader-20260613c.js",
-    "/assets/geoip-scroll-tools.js"
+    "/assets/custom-dashboard-link-fix-20260614.js",
+    "/assets/custom-auth-guard.js",
+    "/assets/custom-overview-status-highlight.js",
+    "/assets/custom-desktop-layout-loader-20260613c.js",
+    "/assets/custom-scroll-tools.js"
   ];
 
   function versioned(src) {

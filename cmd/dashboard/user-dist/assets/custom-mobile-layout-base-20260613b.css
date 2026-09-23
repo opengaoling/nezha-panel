@@ -1,9 +1,9 @@
 /* Mobile-safe layout base.
    Keep desktop row overrides out of this file. */
 
-.geoip-mobile-ua #root .geoip-mobile-cpu > .geoip-native-usage-bar,
-.geoip-mobile-ua #root .geoip-mobile-mem > .geoip-native-usage-bar,
-.geoip-mobile-ua #root .geoip-mobile-stg > .geoip-native-usage-bar {
+.custom-mobile-ua #root .custom-mobile-cpu > .custom-native-usage-bar,
+.custom-mobile-ua #root .custom-mobile-mem > .custom-native-usage-bar,
+.custom-mobile-ua #root .custom-mobile-stg > .custom-native-usage-bar {
   background: rgba(120, 113, 108, 0.18) !important;
   border-radius: 999px !important;
   box-sizing: border-box !important;
@@ -22,42 +22,42 @@
   width: 100% !important;
 }
 
-.geoip-mobile-ua #root .geoip-mobile-cpu,
-.geoip-mobile-ua #root .geoip-mobile-mem,
-.geoip-mobile-ua #root .geoip-mobile-stg {
+.custom-mobile-ua #root .custom-mobile-cpu,
+.custom-mobile-ua #root .custom-mobile-mem,
+.custom-mobile-ua #root .custom-mobile-stg {
   align-items: stretch !important;
   display: grid !important;
   grid-template-rows: 12px 16px 2.5px !important;
   row-gap: 1px !important;
 }
 
-.geoip-mobile-ua #root .geoip-mobile-cpu > p,
-.geoip-mobile-ua #root .geoip-mobile-mem > p,
-.geoip-mobile-ua #root .geoip-mobile-stg > p,
-.geoip-mobile-ua #root .geoip-mobile-cpu > div:not(.geoip-native-usage-bar),
-.geoip-mobile-ua #root .geoip-mobile-mem > div:not(.geoip-native-usage-bar),
-.geoip-mobile-ua #root .geoip-mobile-stg > div:not(.geoip-native-usage-bar) {
+.custom-mobile-ua #root .custom-mobile-cpu > p,
+.custom-mobile-ua #root .custom-mobile-mem > p,
+.custom-mobile-ua #root .custom-mobile-stg > p,
+.custom-mobile-ua #root .custom-mobile-cpu > div:not(.custom-native-usage-bar),
+.custom-mobile-ua #root .custom-mobile-mem > div:not(.custom-native-usage-bar),
+.custom-mobile-ua #root .custom-mobile-stg > div:not(.custom-native-usage-bar) {
   margin: 0 !important;
   min-height: 0 !important;
   overflow: hidden !important;
 }
 
-.geoip-mobile-ua #root .geoip-mobile-cpu > p,
-.geoip-mobile-ua #root .geoip-mobile-mem > p,
-.geoip-mobile-ua #root .geoip-mobile-stg > p {
+.custom-mobile-ua #root .custom-mobile-cpu > p,
+.custom-mobile-ua #root .custom-mobile-mem > p,
+.custom-mobile-ua #root .custom-mobile-stg > p {
   line-height: 12px !important;
 }
 
-.geoip-mobile-ua #root .geoip-mobile-cpu > div:not(.geoip-native-usage-bar),
-.geoip-mobile-ua #root .geoip-mobile-mem > div:not(.geoip-native-usage-bar),
-.geoip-mobile-ua #root .geoip-mobile-stg > div:not(.geoip-native-usage-bar) {
+.custom-mobile-ua #root .custom-mobile-cpu > div:not(.custom-native-usage-bar),
+.custom-mobile-ua #root .custom-mobile-mem > div:not(.custom-native-usage-bar),
+.custom-mobile-ua #root .custom-mobile-stg > div:not(.custom-native-usage-bar) {
   align-items: center !important;
   line-height: 16px !important;
 }
 
-.geoip-mobile-ua #root .geoip-mobile-cpu > .geoip-native-usage-bar > div,
-.geoip-mobile-ua #root .geoip-mobile-mem > .geoip-native-usage-bar > div,
-.geoip-mobile-ua #root .geoip-mobile-stg > .geoip-native-usage-bar > div {
+.custom-mobile-ua #root .custom-mobile-cpu > .custom-native-usage-bar > div,
+.custom-mobile-ua #root .custom-mobile-mem > .custom-native-usage-bar > div,
+.custom-mobile-ua #root .custom-mobile-stg > .custom-native-usage-bar > div {
   border-radius: inherit !important;
   display: block !important;
   height: 100% !important;
@@ -68,14 +68,14 @@
 }
 
 @media (max-width: 767px) {
-  .geoip-mobile-ua #root .server-card-list section[style*="grid-template-columns"] {
+  .custom-mobile-ua #root .server-card-list section[style*="grid-template-columns"] {
     align-items: start !important;
     gap: 1px 6px !important;
     grid-template-columns: 8px 18px minmax(0, 1fr) !important;
     width: 100% !important;
   }
 
-  .geoip-mobile-ua #root .server-card-list .geoip-mobile-platform {
+  .custom-mobile-ua #root .server-card-list .custom-mobile-platform {
     align-self: start !important;
     align-items: center !important;
     display: flex !important;
@@ -90,7 +90,7 @@
     width: 17px !important;
   }
 
-  .geoip-mobile-ua #root .server-card-list .geoip-mobile-platform-icon {
+  .custom-mobile-ua #root .server-card-list .custom-mobile-platform-icon {
     display: block !important;
     flex: 0 0 auto !important;
     font-size: 11px !important;
@@ -101,7 +101,7 @@
     width: 16px !important;
   }
 
-  .geoip-mobile-ua #root .server-card-list .geoip-mobile-platform-text {
+  .custom-mobile-ua #root .server-card-list .custom-mobile-platform-text {
     display: block !important;
     flex: 0 1 auto !important;
     font-size: 9px !important;
@@ -118,7 +118,7 @@
     white-space: nowrap !important;
   }
 
-  .geoip-mobile-ua #root .server-card-list section[style*="grid-template-columns"] > span:first-child {
+  .custom-mobile-ua #root .server-card-list section[style*="grid-template-columns"] > span:first-child {
     grid-column: 1 !important;
     grid-row: 1 !important;
     align-self: start !important;
@@ -126,7 +126,7 @@
     opacity: 1 !important;
   }
 
-  .geoip-mobile-ua #root .server-card-list section[style*="grid-template-columns"] > div:last-child {
+  .custom-mobile-ua #root .server-card-list section[style*="grid-template-columns"] > div:last-child {
     grid-column: 3 !important;
     grid-row: 1 !important;
     max-width: none !important;

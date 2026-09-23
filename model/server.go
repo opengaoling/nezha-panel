@@ -33,7 +33,7 @@ type Server struct {
 
 	Host       *Host      `gorm:"-" json:"host,omitempty"`
 	State      *HostState `gorm:"-" json:"state,omitempty"`
-	GeoIP      *GeoIP     `gorm:"-" json:"geoip,omitempty"`
+	GeoIP      *GeoIP     `gorm:"-" json:"geo_info,omitempty"`
 	LastActive time.Time  `gorm:"-" json:"last_active,omitempty"`
 
 	// taskStream MUST be accessed only via SetTaskStream / GetTaskStream. Direct

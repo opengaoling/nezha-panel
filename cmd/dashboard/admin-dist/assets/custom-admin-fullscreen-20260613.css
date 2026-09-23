@@ -70,13 +70,13 @@ body,
   background: hsl(var(--background));
 }
 
-#root td:has(.geoip-admin-id-cell),
-#root td:has(.geoip-admin-compact-trigger),
-#root td:has(.geoip-admin-actions) {
+#root td:has(.custom-admin-id-cell),
+#root td:has(.custom-admin-compact-trigger),
+#root td:has(.custom-admin-actions) {
   white-space: nowrap;
 }
 
-#root .geoip-admin-id-cell {
+#root .custom-admin-id-cell {
   display: flex;
   min-width: 4.75rem;
   max-width: 13rem;
@@ -86,7 +86,7 @@ body,
   line-height: 1.2;
 }
 
-#root .geoip-admin-id-geo {
+#root .custom-admin-id-geo {
   max-width: 100%;
   overflow: hidden;
   text-align: left;
@@ -96,20 +96,20 @@ body,
   color: hsl(var(--muted-foreground));
 }
 
-#root .geoip-admin-compact-trigger {
+#root .custom-admin-compact-trigger {
   display: inline-flex;
   width: 2rem;
   justify-content: center;
 }
 
-#root .geoip-admin-actions {
+#root .custom-admin-actions {
   align-items: center;
   justify-content: flex-start;
   white-space: nowrap;
 }
 
-#root .geoip-admin-compact-trigger button,
-#root .geoip-admin-actions button {
+#root .custom-admin-compact-trigger button,
+#root .custom-admin-actions button {
   height: 2rem;
   min-height: 2rem;
   width: 2rem;

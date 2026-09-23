@@ -39,7 +39,7 @@ html {
   background: rgba(245, 245, 244, 0.9);
 }
 
-html body .geoip-scroll-tools {
+html body .custom-scroll-tools {
   position: fixed !important;
   right: max(18px, env(safe-area-inset-right)) !important;
   bottom: max(18px, env(safe-area-inset-bottom)) !important;
@@ -54,7 +54,7 @@ html body .geoip-scroll-tools {
   pointer-events: auto !important;
 }
 
-html body .geoip-scroll-tools button {
+html body .custom-scroll-tools button {
   display: inline-flex !important;
   width: 42px !important;
   height: 42px !important;
@@ -75,37 +75,37 @@ html body .geoip-scroll-tools button {
   transition: transform 0.15s ease, background-color 0.15s ease, color 0.15s ease !important;
 }
 
-html body .geoip-scroll-tools button:hover {
+html body .custom-scroll-tools button:hover {
   transform: translateY(-1px) !important;
   background: rgb(41, 37, 36) !important;
   color: rgb(250, 250, 249) !important;
 }
 
-html body .geoip-scroll-tools button:focus-visible {
+html body .custom-scroll-tools button:focus-visible {
   outline: 2px solid rgba(34, 197, 94, 0.85) !important;
   outline-offset: 2px !important;
 }
 
-html body .geoip-scroll-tools svg {
+html body .custom-scroll-tools svg {
   width: 20px !important;
   height: 20px !important;
   stroke-width: 2.25 !important;
 }
 
-.dark body .geoip-scroll-tools button {
+.dark body .custom-scroll-tools button {
   border-color: rgba(168, 162, 158, 0.28) !important;
   background: rgba(28, 25, 23, 0.9) !important;
   color: rgb(245, 245, 244) !important;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38) !important;
 }
 
-.dark body .geoip-scroll-tools button:hover {
+.dark body .custom-scroll-tools button:hover {
   background: rgb(245, 245, 244) !important;
   color: rgb(28, 25, 23) !important;
 }
 
 @media (max-width: 767px) {
-  html body .geoip-scroll-tools {
+  html body .custom-scroll-tools {
     left: max(8px, calc(100vw - 54px)) !important;
     right: auto !important;
     bottom: max(70px, calc(env(safe-area-inset-bottom) + 16px)) !important;
@@ -115,7 +115,7 @@ html body .geoip-scroll-tools svg {
     pointer-events: auto !important;
   }
 
-  html body .geoip-scroll-tools button {
+  html body .custom-scroll-tools button {
     display: inline-flex !important;
     width: 40px !important;
     height: 40px !important;

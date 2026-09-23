@@ -14,7 +14,7 @@ RUN chmod +x /entrypoint.sh
 WORKDIR /dashboard
 COPY dist/dashboard-${TARGETOS}-${TARGETARCH} ./app
 
-VOLUME ["/dashboard/data", "/dashboard/geoip"]
+VOLUME ["/dashboard/data"]
 EXPOSE 2052
 ARG TZ=Asia/Shanghai
 ENV TZ=$TZ

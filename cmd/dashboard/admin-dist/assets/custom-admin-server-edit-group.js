@@ -10,12 +10,12 @@
   style.textContent = '[role="dialog"] form textarea[rows="10"]{min-height:40px !important;height:60px !important;max-height:100px}';
   document.head.appendChild(style);
 
-  if (window.__geoipServerEditGroupInstalled) return;
-  window.__geoipServerEditGroupInstalled = true;
+  if (window.__customServerEditGroupInstalled) return;
+  window.__customServerEditGroupInstalled = true;
 
-  var FIELD_ATTR = "data-geoip-edit-server-groups";
-  var FORM_ATTR = "data-geoip-edit-server-form";
-  var CHECK_CLASS = "geoip-edit-group-checkbox";
+  var FIELD_ATTR = "data-custom-edit-server-groups";
+  var FORM_ATTR = "data-custom-edit-server-form";
+  var CHECK_CLASS = "custom-edit-group-checkbox";
 
   var groupsCache = null;
   var groupsPromise = null;
@@ -102,7 +102,7 @@
   }
 
   function resolveServerId(dialog) {
-    var stored = dialog.getAttribute("data-geoip-edit-server-id");
+    var stored = dialog.getAttribute("data-custom-edit-server-id");
     if (stored) return Promise.resolve(stored);
     // 对话框文本里找 ID(display_index)
     var m = (dialog.textContent || "").match(/(?:^|\s)(\d+)\(\d+\)(?:\s|$)/);
@@ -127,14 +127,14 @@
     wrapper.setAttribute(FIELD_ATTR, "true");
     wrapper.innerHTML =
       '<label class="text-sm font-medium leading-none">服务器分组</label>' +
-      '<div class="geoip-edit-group-list grid grid-cols-2 gap-1 overflow-y-auto rounded-md border p-2">' +
+      '<div class="custom-edit-group-list grid grid-cols-2 gap-1 overflow-y-auto rounded-md border p-2">' +
       '<span class="text-xs text-muted-foreground col-span-2">加载中…</span></div>' +
-      '<p class="text-xs text-muted-foreground geoip-edit-group-status" aria-live="polite">保存服务器后自动同步分组关系。</p>';
+      '<p class="text-xs text-muted-foreground custom-edit-group-status" aria-live="polite">保存服务器后自动同步分组关系。</p>';
     return wrapper;
   }
 
   function renderGroupCheckboxes(wrapper, serverId) {
-    var listEl = wrapper.querySelector(".geoip-edit-group-list");
+    var listEl = wrapper.querySelector(".custom-edit-group-list");
     loadGroups(true).then(function (groups) {
       listEl.innerHTML = "";
       if (!groups.length) {
@@ -197,7 +197,7 @@
   function tryInjectDialog(dialog, attempt) {
     if (!isDashboard()) return;
     if (dialog.querySelector("[" + FIELD_ATTR + "]")) return; // 已注入
-    if (dialog.getAttribute("data-geoip-injecting") === "true") return;
+    if (dialog.getAttribute("data-custom-injecting") === "true") return;
 
     var form = dialog.querySelector("form");
     if (!form) {
@@ -208,14 +208,14 @@
       return;
     }
 
-    dialog.setAttribute("data-geoip-injecting", "true");
+    dialog.setAttribute("data-custom-injecting", "true");
 
     var field = buildGroupField();
     insertFieldIntoForm(form, field);
     form.setAttribute(FORM_ATTR, "true");
 
     resolveServerId(dialog).then(function (serverId) {
-      dialog.setAttribute("data-geoip-edit-server-id", serverId || "");
+      dialog.setAttribute("data-custom-edit-server-id", serverId || "");
       renderGroupCheckboxes(field, serverId);
     });
   }
@@ -283,8 +283,8 @@
       return t.then(function () { return true; }).catch(function (e) { console.error("[edit-group]", e); return false; });
     })).then(function (results) {
       var failed = results.filter(function (ok) { return !ok; }).length;
-      var dialog = document.querySelector('[role="dialog"][data-geoip-edit-server-id="' + serverId + '"]');
-      var el = dialog && dialog.querySelector(".geoip-edit-group-status");
+      var dialog = document.querySelector('[role="dialog"][data-custom-edit-server-id="' + serverId + '"]');
+      var el = dialog && dialog.querySelector(".custom-edit-group-status");
       if (el) el.textContent = failed === 0 ? "分组已同步" : failed + " 个分组同步失败，请重试";
       // 分组同步成功后，等对话框关闭再刷新页面（zustand store 无法从外部直接更新）
       if (failed === 0) {
@@ -306,7 +306,7 @@
             }
             // 等对话框关闭后 reload
             var checkClose = function () {
-              var dlg = document.querySelector('[role="dialog"][data-geoip-edit-server-id="' + serverId + '"]');
+              var dlg = document.querySelector('[role="dialog"][data-custom-edit-server-id="' + serverId + '"]');
               if (!dlg || dlg.offsetParent === null || !document.contains(dlg)) {
                 window.location.reload();
               } else {
@@ -330,13 +330,13 @@
       var m = url.match(/\/api\/v1\/server\/(\d+)(\?.*)?$/);
       if (method === "PATCH" && m) {
         var sid = m[1];
-        var dialog = document.querySelector('[role="dialog"][data-geoip-edit-server-id="' + sid + '"]')
+        var dialog = document.querySelector('[role="dialog"][data-custom-edit-server-id="' + sid + '"]')
           || document.querySelector('[role="dialog"][' + FIELD_ATTR + ']');
-        if (dialog) dialog.setAttribute("data-geoip-edit-server-id", sid);
+        if (dialog) dialog.setAttribute("data-custom-edit-server-id", sid);
         if (dialog && dialog.querySelector("[" + FIELD_ATTR + "]")) {
           var desired = collectDesired(dialog);
           if (desired.add.size || desired.remove.size) pendingByServer[sid] = desired;
-          var el = dialog.querySelector(".geoip-edit-group-status");
+          var el = dialog.querySelector(".custom-edit-group-status");
           if (el) el.textContent = "正在同步分组…";
         }
         return orig.apply(this, arguments).then(function (r) {

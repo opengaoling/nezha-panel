@@ -146,14 +146,14 @@ func TestFallbackToFrontendCacheBustsCustomUserAssets(t *testing.T) {
 
 	router := newFrontendFallbackTestRouter(t)
 	writeFrontendFallbackTestFile(t, "user-dist/index.html", `<html><head>
-<script type="module" src="/assets/index.geoip-mobile-transfer-20260611.js"></script>
-<link rel="stylesheet" href="/assets/geoip-user-visibility.css">
-<script src="/assets/geoip-scroll-tools.js"></script>
+<script type="module" src="/assets/index.custom-mobile-transfer-20260611.js"></script>
+<link rel="stylesheet" href="/assets/custom-user-visibility.css">
+<script src="/assets/custom-scroll-tools.js"></script>
 <script type="module" src="/assets/react-dom.C2KtklHg.js"></script>
 </head></html>`)
-	writeFrontendFallbackTestFile(t, "user-dist/assets/index.geoip-mobile-transfer-20260611.js", "console.log('geoip app')")
-	writeFrontendFallbackTestFile(t, "user-dist/assets/geoip-user-visibility.css", "body{color:red}")
-	writeFrontendFallbackTestFile(t, "user-dist/assets/geoip-scroll-tools.js", "console.log('scroll')")
+	writeFrontendFallbackTestFile(t, "user-dist/assets/index.custom-mobile-transfer-20260611.js", "console.log('custom app')")
+	writeFrontendFallbackTestFile(t, "user-dist/assets/custom-user-visibility.css", "body{color:red}")
+	writeFrontendFallbackTestFile(t, "user-dist/assets/custom-scroll-tools.js", "console.log('scroll')")
 
 	token := "v1-2-3-cache-" + strconv.FormatUint(12345, 36)
 	w := performFrontendFallbackRequest(t, router, "/")
@@ -165,9 +165,9 @@ func TestFallbackToFrontendCacheBustsCustomUserAssets(t *testing.T) {
 		t.Fatalf("Cache-Control = %q, want no-store", cacheControl)
 	}
 	for _, expected := range []string{
-		"/assets/index.geoip-mobile-transfer-20260611." + token + ".js",
-		"/assets/geoip-user-visibility." + token + ".css",
-		"/assets/geoip-scroll-tools." + token + ".js",
+		"/assets/index.custom-mobile-transfer-20260611." + token + ".js",
+		"/assets/custom-user-visibility." + token + ".css",
+		"/assets/custom-scroll-tools." + token + ".js",
 	} {
 		if !strings.Contains(body, expected) {
 			t.Fatalf("index.html missing cache-busted asset %q in %q", expected, body)
@@ -177,12 +177,12 @@ func TestFallbackToFrontendCacheBustsCustomUserAssets(t *testing.T) {
 		t.Fatalf("hashed vendor asset should stay unchanged, body = %q", body)
 	}
 
-	w = performFrontendFallbackRequest(t, router, "/assets/geoip-user-visibility."+token+".css")
+	w = performFrontendFallbackRequest(t, router, "/assets/custom-user-visibility."+token+".css")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "body{color:red}") {
 		t.Fatalf("cache-busted css status = %d body = %q, want original css", w.Code, w.Body.String())
 	}
-	w = performFrontendFallbackRequest(t, router, "/assets/index.geoip-mobile-transfer-20260611."+token+".js")
-	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "geoip app") {
+	w = performFrontendFallbackRequest(t, router, "/assets/index.custom-mobile-transfer-20260611."+token+".js")
+	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "custom app") {
 		t.Fatalf("cache-busted js status = %d body = %q, want original js", w.Code, w.Body.String())
 	}
 }

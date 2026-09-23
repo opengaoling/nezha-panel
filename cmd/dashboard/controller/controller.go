@@ -380,9 +380,9 @@ func fallbackToFrontend(frontendDist fs.FS) func(*gin.Context) {
 		ext := path.Ext(base)
 		switch ext {
 		case ".css":
-			return strings.HasPrefix(base, "geoip-")
+			return strings.HasPrefix(base, "custom-")
 		case ".js":
-			return strings.HasPrefix(base, "geoip-") || strings.HasPrefix(base, "index.geoip-")
+			return strings.HasPrefix(base, "custom-") || strings.HasPrefix(base, "index.custom-") || strings.HasPrefix(base, "index-custom-")
 		default:
 			return false
 		}
@@ -390,10 +390,10 @@ func fallbackToFrontend(frontendDist fs.FS) func(*gin.Context) {
 
 	cacheBustHTML := func(content []byte) []byte {
 		token := frontendCacheToken()
-		assetRefPattern := regexp.MustCompile(`/assets/(?:geoip-[^"'<>]+\.(?:css|js)|index\.geoip-[^"'<>]+\.js)`)
+		assetRefPattern := regexp.MustCompile(`(?:/dashboard)?/assets/(?:custom-[^"'<>]+\.(?:css|js)|index\.custom-[^"'<>]+\.js|index-custom-[^"'<>]+\.js)`)
 		return assetRefPattern.ReplaceAllFunc(content, func(match []byte) []byte {
 			ref := string(match)
-			if !isCacheBustedFrontendAsset(strings.TrimPrefix(ref, "/")) {
+			if !isCacheBustedFrontendAsset(path.Base(ref)) {
 				return match
 			}
 			ext := path.Ext(ref)

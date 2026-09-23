@@ -1,12 +1,12 @@
 (function () {
-  if (window.__geoipSessionTimeoutSettingInstalled) return;
-  window.__geoipSessionTimeoutSettingInstalled = true;
+  if (window.__customSessionTimeoutSettingInstalled) return;
+  window.__customSessionTimeoutSettingInstalled = true;
 
   var currentTimeout = null;
   var MIN_TIMEOUT = 24;
   var MAX_TIMEOUT = 720;
-  var inputId = "geoip-jwt-timeout-input";
-  var fieldId = "geoip-jwt-timeout-field";
+  var inputId = "custom-jwt-timeout-input";
+  var fieldId = "custom-jwt-timeout-field";
 
   function isSettingUrl(input) {
     try {

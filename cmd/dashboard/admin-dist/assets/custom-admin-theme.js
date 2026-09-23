@@ -1,6 +1,6 @@
 (function () {
-  if (window.__geoipAdminThemeInstalled) return;
-  window.__geoipAdminThemeInstalled = true;
+  if (window.__customAdminThemeInstalled) return;
+  window.__customAdminThemeInstalled = true;
 
   var version = "admin-theme-20260923b";
   try {
@@ -21,10 +21,10 @@
     window.__nzHomeHref = "/";
   }
   var scripts = [
-    "/dashboard/assets/geoip-auth-guard.js",
-    "/dashboard/assets/geoip-session-timeout-setting-20260616.js",
-    "/dashboard/assets/geoip-scroll-tools-20260613.js",
-    "/dashboard/assets/geoip-admin-new-server-guest-setting.js"
+    "/dashboard/assets/custom-auth-guard.js",
+    "/dashboard/assets/custom-session-timeout-setting-20260616.js",
+    "/dashboard/assets/custom-scroll-tools-20260613.js",
+    "/dashboard/assets/custom-admin-new-server-guest-setting.js"
   ];
 
   function versioned(src) {

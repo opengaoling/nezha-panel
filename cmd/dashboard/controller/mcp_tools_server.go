@@ -99,7 +99,7 @@ func init() {
 				"public_note": map[string]any{"type": "string"},
 				"host":        map[string]any{"type": "object"},
 				"state":       map[string]any{"type": "object"},
-				"geoip":       map[string]any{"type": "object"},
+				"geo_info":   map[string]any{"type": "object"},
 				"last_active": map[string]any{"type": "string", "format": "date-time"},
 			},
 			"required": []string{"id"},
@@ -195,7 +195,7 @@ func handleServerGet(c *gin.Context, raw json.RawMessage) (any, error) {
 		"public_note": s.PublicNote,
 		"host":        s.Host,
 		"state":       s.State,
-		"geoip":       s.GeoIP,
+		"geo_info":    s.GeoIP,
 		"last_active": s.LastActive,
 	}, nil
 }

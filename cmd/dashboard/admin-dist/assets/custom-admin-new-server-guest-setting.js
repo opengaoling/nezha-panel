@@ -1,12 +1,12 @@
 (function () {
   "use strict";
 
-  if (window.__geoipNewServerGuestSettingInstalled) return;
-  window.__geoipNewServerGuestSettingInstalled = true;
+  if (window.__customNewServerGuestSettingInstalled) return;
+  window.__customNewServerGuestSettingInstalled = true;
 
-  var fieldId = "geoip-hide-new-servers-field";
-  var inputId = "geoip-hide-new-servers-input";
-  var statusId = "geoip-hide-new-servers-status";
+  var fieldId = "custom-hide-new-servers-field";
+  var inputId = "custom-hide-new-servers-input";
+  var statusId = "custom-hide-new-servers-status";
   var settingConfig = null;
 
   function isSettingsPage() {
@@ -116,7 +116,7 @@
 
   function insertField() {
     if (!isSettingsPage() || document.getElementById(fieldId)) return;
-    var anchor = document.getElementById("geoip-jwt-timeout-field");
+    var anchor = document.getElementById("custom-jwt-timeout-field");
     if (!anchor) {
       var labels = Array.from(document.querySelectorAll("label"));
       var customLabel = labels.find(function (label) {
