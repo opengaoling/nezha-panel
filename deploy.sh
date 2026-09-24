@@ -18,7 +18,7 @@ NC='\033[0m'
 # 全局默认参数
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
-DOCKER_IMAGE="ghcr.io/opengaoling/nezha-dashboard:latest"
+DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
 CADDY_IMAGE="caddy:2-alpine"
 
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
