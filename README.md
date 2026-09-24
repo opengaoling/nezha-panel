@@ -228,12 +228,19 @@ server {
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
 
-    # WebSocket 支持
-    proxy_http_version 1.1;
-    proxy_set_header Upgrade $http_upgrade;
-    proxy_set_header Connection "upgrade";
+    # gRPC 通信（Agent 监控数据上报）
+    location /proto.NezhaService/ {
+        grpc_pass grpc://127.0.0.1:2052;
+        grpc_read_timeout 1d;
+        grpc_send_timeout 1d;
+        client_max_body_size 0;
+    }
 
+    # WebSocket 与 Web 页面支持
     location / {
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
         proxy_pass http://127.0.0.1:2052;
     }
 }
@@ -242,7 +249,36 @@ server {
 #### Caddy 配置示例
 ```caddy
 monitor.yourdomain.com {
-    reverse_proxy 127.0.0.1:2052
+    # 全站禁用浏览器缓存，避免前端资源更新后白屏
+    header {
+        Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+        Pragma "no-cache"
+        Expires "0"
+        -ETag
+        -Last-Modified
+    }
+
+    # gRPC 流量匹配并反向代理 (Agent 通信)，透传 h2c (Cleartext HTTP/2)
+    @grpc {
+        header Content-Type application/grpc*
+    }
+    reverse_proxy @grpc 127.0.0.1:2052 {
+        transport http {
+            versions h2c 2
+        }
+    }
+
+    # 普通 Web / REST API / WebSocket 反向代理
+    reverse_proxy 127.0.0.1:2052 {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+
+    # 智能压缩（排除 gRPC 二进制数据流）
+    @notGrpc {
+        not header Content-Type application/grpc*
+    }
+    encode @notGrpc zstd gzip
 }
 ```
 
@@ -256,7 +292,7 @@ monitor.yourdomain.com {
 | :--- | :--- | :--- | :--- |
 | `secret_path` | `NEZHA_SECRET_PATH` | 8 位随机英文路径防探测前缀 | `jjjjjjxf` |
 | `listen_port` | - | 面板服务监听端口（默认去指纹化端口） | `2052` |
-| `agent_secret_key` | - | Agent 通信连接密钥 | 在后台管理界面配置 |
+| `agent_secret_key` | - | 全局 Agent 通信连接密钥（兼容旧机器快速上线） | `your-secret-here` |
 | `jwt_timeout` | - | 登录 Token 过期有效时长（小时） | `24` |
 | `force_auth` | - | 是否强制要求全局认证 | `true` |
 
@@ -264,14 +300,31 @@ monitor.yourdomain.com {
 
 ## 🖥️ 被控端（Agent）接入指南
 
-在需要被监控的客户端服务器上，执行一键接入命令：
+### 1. 新机器一键接入
 
+在需要被监控的客户端服务器上，执行接入命令：
+
+**推荐：通过 443 端口启用 TLS 加密接入（安全且穿透性强）**
 ```bash
 curl -L https://raw.githubusercontent.com/nezhahq/scripts/main/agent/install.sh -o nezha.sh && chmod +x nezha.sh
+./nezha.sh install_agent <你的域名> 443 <Agent通信密钥> --tls
+```
+
+**或者：直连面板 2052 端口接入**
+```bash
 ./nezha.sh install_agent <面板域名或IP> 2052 <Agent通信密钥>
 ```
 
-> **提示**：如果面板配置了反向代理，请确保反代服务（如 Nginx/Cloudflare）放行了 gRPC 通信或将 Agent 通信端口直连宿主机的 2052 端口。
+### 2. 原有已有旧机器无感恢复上线
+
+若原先已有大量机器安装了 Agent，**完全不需要去每台机器上重装或修改配置**：
+1. 查看您原有机器 Agent 配置文件中记录的通信密钥（即 `client_secret`）；
+2. 打开部署目录下的 `data/config.yaml`，将 `agent_secret_key` 设置为您原有的密钥：
+   ```yaml
+   agent_secret_key: "您原机器的密钥"
+   ```
+3. 执行 `docker compose restart nezha-dashboard` 重启面板；
+4. 原有的全部旧机器将在数十秒内自动重新连接并全部恢复上线。
 
 ---
 

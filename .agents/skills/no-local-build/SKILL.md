@@ -38,16 +38,21 @@ description: Enforces cloud-only CI/CD container image builds and strictly prohi
    git commit -m "feat/fix: <description>"
    git push origin master
    ```
-2. **监控云端构建进度**：
+2. **按需手动触发云端构建**：
+   镜像构建由 GitHub Actions 手动触发，推送代码不会自动触发多架构构建。准备发布新版本时执行：
+   ```bash
+   gh workflow run build-dashboard-app-image.yml
+   ```
+3. **监控云端构建进度**：
    使用 GitHub CLI 工具跟踪云端 Workflow 运行状态，不得中途打断或本地顶替：
    ```bash
    gh run list --limit 3
    gh run view <RUN_ID>
    ```
-3. **等待云端完成交付**：
+4. **等待云端完成交付**：
    - 云端多架构（`linux/amd64,linux/arm64`）构建通常耗时约 25~30 分钟。
    - 必须等待 GitHub Actions 状态变更为 `completed / success` 且镜像已推送至 GHCR。
-4. **验证与部署**：
+5. **验证与部署**：
    在服务器上执行拉取与启动：
    ```bash
    docker compose pull && docker compose up -d

@@ -12,5 +12,6 @@ description: Strictly prohibits local Docker image builds; all container images 
 ## Mandatory Procedure
 1. All container images and multi-architecture manifests must be produced exclusively by GitHub Actions CI/CD (`.github/workflows/build-dashboard-app-image.yml`).
 2. When changes are made, commit and push to `origin/master`.
-3. Wait for the cloud GitHub Actions workflow to finish (`gh run view <RUN_ID>` / `gh run list`).
-4. Never perform local manual build/push interventions to bypass CI wait times.
+3. Manually trigger the cloud build when ready: `gh workflow run build-dashboard-app-image.yml`.
+4. Wait for the cloud GitHub Actions workflow to finish (`gh run view <RUN_ID>` / `gh run list`).
+5. Never perform local manual build/push interventions to bypass CI wait times.
