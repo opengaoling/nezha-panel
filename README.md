@@ -58,6 +58,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/opengaoling/nezha-panel/mast
 #### 4. 便捷管理工具（全局 `nezha` 快捷命令）
 部署脚本会自动在系统注册 `nezha` 全局管理命令，可在任意目录下直接使用：
 ```bash
+nezha              # 打开可视化交互式管理主菜单（推荐）
+nezha clean        # 进入系统清理与维护菜单（清理 Docker 冗余镜像/日志截断/彻底卸载）
 nezha status       # 查看面板容器与 Caddy 运行状态
 nezha logs-caddy   # 实时查看 Caddy 域名证书申请与 Web 访问日志
 nezha logs         # 实时查看面板后端服务日志
@@ -65,6 +67,13 @@ nezha restart      # 一键平滑重启所有服务
 nezha update       # 一键拉取最新镜像平滑更新
 nezha info         # 查看当前配置备忘与访问链接
 ```
+
+运行部署脚本自身亦可调出主菜单与进行快捷维护：
+```bash
+./deploy.sh        # 打开部署主菜单
+./deploy.sh clean  # 直接进入清理与维护菜单
+```
+
 
 ---
 
