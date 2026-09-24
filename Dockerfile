@@ -1,9 +1,11 @@
-FROM debian:bookworm-slim
-
+FROM --platform=$BUILDPLATFORM debian:bookworm-slim AS base
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 
+FROM debian:bookworm-slim
+COPY --from=base /etc/ssl/certs /etc/ssl/certs
+COPY --from=base /usr/share/zoneinfo /usr/share/zoneinfo
+
 COPY ./script/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
 
 WORKDIR /dashboard
 ARG TARGETOS

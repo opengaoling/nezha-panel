@@ -15,11 +15,40 @@ jobs:
       packages: write
       contents: read
     steps:
-      - name: Delete package versions
-        uses: actions/delete-package-versions@v5
+      - name: Delete old tagged package versions safely without breaking multi-arch manifests
+        uses: actions/github-script@v7
         with:
-          package-name: 'nezha-panel'
-          package-type: 'container'
-          min-versions-to-keep: 1
-          delete-only-untagged-versions: 'false'
-          ignore-versions: '^latest$'
+          script: |
+            const packageName = 'nezha-panel';
+            const owner = context.repo.owner;
+            const isUser = context.payload.repository.owner.type === 'User';
+            const endpoint = isUser
+              ? `GET /users/${owner}/packages/container/${packageName}/versions`
+              : `GET /orgs/${owner}/packages/container/${packageName}/versions`;
+
+            const { data: versions } = await github.request(endpoint, { per_page: 100 });
+            console.log(`Found ${versions.length} versions`);
+
+            for (const v of versions) {
+              const tags = v.metadata?.container?.tags || [];
+              const isKeep = tags.some(t => t === 'latest' || t.startsWith('latest-'));
+              const isUntagged = tags.length === 0;
+
+              // 保留 latest 及 latest-*，并严禁删除多架构 manifest 所引用的未打标子层(untagged layers)
+              if (isKeep || isUntagged) {
+                console.log(`Keeping version id=${v.id} tags=[${tags.join(', ')}]`);
+                continue;
+              }
+
+              // 仅删除带有历史 commit/发布 tag 的旧版本
+              console.log(`Deleting old version id=${v.id} tags=[${tags.join(', ')}]`);
+              const delEndpoint = isUser
+                ? `DELETE /users/${owner}/packages/container/${packageName}/versions/${v.id}`
+                : `DELETE /orgs/${owner}/packages/container/${packageName}/versions/${v.id}`;
+              try {
+                await github.request(delEndpoint);
+                console.log(`Successfully deleted version id=${v.id}`);
+              } catch (e) {
+                console.error(`Failed to delete version id=${v.id}: ${e.message}`);
+              }
+            }
