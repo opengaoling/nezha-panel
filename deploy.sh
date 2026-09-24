@@ -311,14 +311,26 @@ write_configs() {
 # 自动启用 HTTP->HTTPS 强制跳转、TLS 1.3 及 HTTP/3 (QUIC)
 #=============================================================================
 ${INPUT_DOMAIN} {
-$( [ -n "$INPUT_EMAIL" ] && echo "    email ${INPUT_EMAIL}" )
+$( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_EMAIL}" )
+
+    # 全站禁用缓存，杜绝静态资源及接口缓存导致的白屏与渲染异常
+    header {
+        Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+        Pragma "no-cache"
+        Expires "0"
+        -ETag
+        -Last-Modified
+    }
 
     # 反向代理至面板容器，自动透传 WebSocket、真实客户端 IP 与 Host
     reverse_proxy nezha-dashboard:${INPUT_PORT} {
         header_up Host {host}
         header_up X-Real-IP {remote_host}
-        header_up X-Forwarded-For {remote_host}
-        header_up X-Forwarded-Proto {scheme}
+        header_down Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+        header_down Pragma "no-cache"
+        header_down Expires "0"
+        header_down -ETag
+        header_down -Last-Modified
     }
 
     # 启用智能高效压缩

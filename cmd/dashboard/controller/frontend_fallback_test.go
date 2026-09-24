@@ -181,9 +181,22 @@ func TestFallbackToFrontendCacheBustsCustomUserAssets(t *testing.T) {
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "body{color:red}") {
 		t.Fatalf("cache-busted css status = %d body = %q, want original css", w.Code, w.Body.String())
 	}
+	if cacheControl := w.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-store") {
+		t.Fatalf("css Cache-Control = %q, want no-store", cacheControl)
+	}
+	if lastMod := w.Header().Get("Last-Modified"); lastMod != "" {
+		t.Fatalf("css Last-Modified = %q, want empty to prevent conditional cache", lastMod)
+	}
+
 	w = performFrontendFallbackRequest(t, router, "/assets/index.custom-mobile-transfer-20260611."+token+".js")
 	if w.Code != http.StatusOK || !strings.Contains(w.Body.String(), "custom app") {
 		t.Fatalf("cache-busted js status = %d body = %q, want original js", w.Code, w.Body.String())
+	}
+	if cacheControl := w.Header().Get("Cache-Control"); !strings.Contains(cacheControl, "no-store") {
+		t.Fatalf("js Cache-Control = %q, want no-store", cacheControl)
+	}
+	if lastMod := w.Header().Get("Last-Modified"); lastMod != "" {
+		t.Fatalf("js Last-Modified = %q, want empty to prevent conditional cache", lastMod)
 	}
 }
 

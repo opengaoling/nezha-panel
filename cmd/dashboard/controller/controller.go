@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	jwt "github.com/appleboy/gin-jwt/v2"
 	"github.com/gin-contrib/pprof"
@@ -31,6 +32,14 @@ func ServeWeb(frontendDist fs.FS) http.Handler {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
 	r.RedirectTrailingSlash = false
+
+	// 全站禁用缓存，杜绝静态资源及接口缓存导致的白屏与渲染异常
+	r.Use(func(c *gin.Context) {
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
+		c.Next()
+	})
 
 	r.Use(waf.RealIp)
 	r.Use(waf.Waf)
@@ -430,15 +439,15 @@ func fallbackToFrontend(frontendDist fs.FS) func(*gin.Context) {
 		if fileStat.IsDir() {
 			return false
 		}
+		c.Header("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0")
+		c.Header("Pragma", "no-cache")
+		c.Header("Expires", "0")
 		if strings.EqualFold(path.Base(name), "index.html") {
 			content, err := io.ReadAll(file)
 			if err != nil {
 				return false
 			}
 			bustedContent := cacheBustHTML(content)
-			c.Header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
-			c.Header("Pragma", "no-cache")
-			c.Header("Expires", "0")
 			c.Header("Content-Type", "text/html; charset=utf-8")
 			c.Header("Content-Length", strconv.Itoa(len(bustedContent)))
 			c.Status(customStatusCode)
@@ -449,7 +458,9 @@ func fallbackToFrontend(frontendDist fs.FS) func(*gin.Context) {
 		if !ok {
 			return false
 		}
-		http.ServeContent(utils.NewGinCustomWriter(c, customStatusCode), c.Request, name, fileStat.ModTime(), readSeeker)
+		c.Request.Header.Del("If-Modified-Since")
+		c.Request.Header.Del("If-None-Match")
+		http.ServeContent(utils.NewGinCustomWriter(c, customStatusCode), c.Request, name, time.Time{}, readSeeker)
 		return true
 	}
 

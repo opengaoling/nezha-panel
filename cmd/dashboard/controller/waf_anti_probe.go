@@ -24,6 +24,10 @@ const (
 // (and lacks an authenticated secret cookie/header/PAT) returns 404 to prevent probing.
 func secretPathHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0")
+		w.Header().Set("Pragma", "no-cache")
+		w.Header().Set("Expires", "0")
+
 		secret := ""
 		if singleton.Conf != nil {
 			secret = strings.Trim(singleton.Conf.SecretPath, "/")
