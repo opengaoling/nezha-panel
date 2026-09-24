@@ -27,7 +27,48 @@
 
 ## 📦 部署教程
 
-### 方式一：Docker Compose 部署（强烈推荐）
+### 方式一：一键自动化部署脚本（强烈推荐 · 内置 Caddy 自动申请与自动续期 SSL 证书）
+
+只需执行一条命令即可完成全套部署，脚本会自动检测并配置 Docker 与 Docker Compose 环境、交互式引导您填写域名、自动生成 8 位安全隐匿路径，并通过 **Caddy 自动向 Let's Encrypt / ZeroSSL 申请 HTTPS 域名证书并在后台静默自动续期**，全程无需任何人工干预或配置繁琐的 certbot 与 crontab 定时任务。
+
+#### 1. 运行一键部署命令
+```bash
+curl -fsSL https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh -o deploy.sh && chmod +x deploy.sh && sudo ./deploy.sh
+```
+*或使用简短管道执行：*
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh)
+```
+
+#### 2. 交互式参数引导
+脚本执行后将依次提示以下设置（直接回车可使用建议默认值）：
+1. **绑定域名**：输入已解析到本机公网 IP 的域名（例如 `monitor.yourdomain.com`）。
+2. **联系邮箱**（可选）：用于接收 Let's Encrypt 证书状态通知，回车可直接跳过（Caddy 仍会自动申请证书）。
+3. **通信端口**：默认 `2052`（去特征化端口，支持面板与被控端 Agent 通信）。
+4. **8 位安全路径**：系统默认随机生成高强度 8 位英文字母（例如 `mKovrigH`），直接回车确认即可。
+5. **安装目录**：默认 `/opt/nezha-dashboard`。
+
+#### 3. 访问面板与后台
+部署完成后终端将输出专属访问信息：
+- 🌐 **前台安全访问网关**：`https://<你的域名>/<8位随机路径>/`
+- ⚙️ **管理后台控制台**：`https://<你的域名>/<8位随机路径>/dashboard/`
+- 👤 **默认管理员账号**：`admin`
+- 🔑 **默认管理员密码**：`admin`（首次登录后请立即进入系统设置修改密码）
+
+#### 4. 便捷管理工具（全局 `nezha` 快捷命令）
+部署脚本会自动在系统注册 `nezha` 全局管理命令，可在任意目录下直接使用：
+```bash
+nezha status       # 查看面板容器与 Caddy 运行状态
+nezha logs-caddy   # 实时查看 Caddy 域名证书申请与 Web 访问日志
+nezha logs         # 实时查看面板后端服务日志
+nezha restart      # 一键平滑重启所有服务
+nezha update       # 一键拉取最新镜像平滑更新
+nezha info         # 查看当前配置备忘与访问链接
+```
+
+---
+
+### 方式二：手动 Docker Compose 部署
 
 #### 1. 创建项目目录
 ```bash
@@ -79,7 +120,7 @@ NEZHA>> generated new secret_path: /jjjjjjxf (access panel via /jjjjjjxf/ or /jj
 
 ---
 
-### 方式二：Docker CLI 直接运行
+### 方式三：Docker CLI 直接运行
 
 如果习惯使用单行命令运行，可直接执行：
 
@@ -100,7 +141,7 @@ docker logs nezha-dashboard
 
 ---
 
-### 方式三：独立二进制 Systemd 服务部署（原生高性能）
+### 方式四：独立二进制 Systemd 服务部署（原生高性能）
 
 适用于不希望运行 Docker 的轻量级云服务器或 VPS：
 
@@ -153,9 +194,9 @@ cat /opt/nezha-panel/data/config.yaml | grep secret_path
 
 ---
 
-### 方式四：反向代理与域名 SSL 配置
+### 方式五：自定义反向代理配置（若已有独立 Nginx / Caddy 服务）
 
-为面板绑定域名并配置 SSL 证书时，需注意开启 **WebSocket** 支持与 **gRPC** 兼容。
+若您已在宿主机部署了统一反向代理服务（不使用部署脚本内置的 Caddy 容器），可按以下配置反向代理至面板（注意放行 WebSocket 与 gRPC）：
 
 #### Nginx 配置示例
 ```nginx
