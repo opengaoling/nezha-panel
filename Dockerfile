@@ -1,18 +1,16 @@
-FROM alpine AS depend
-RUN apk add --update --no-cache ca-certificates tzdata
+FROM debian:bookworm-slim
 
-FROM busybox:stable-musl
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 
-ARG TARGETOS
-ARG TARGETARCH
-
-COPY --from=depend /etc/ssl/certs /etc/ssl/certs
-COPY --from=depend /usr/share/zoneinfo /usr/share/zoneinfo
 COPY ./script/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /dashboard
+ARG TARGETOS
+ARG TARGETARCH
 COPY dist/dashboard-${TARGETOS}-${TARGETARCH} ./app
+COPY cmd/dashboard/user-dist ./user-dist
+COPY cmd/dashboard/admin-dist ./admin-dist
 
 VOLUME ["/dashboard/data"]
 EXPOSE 2052

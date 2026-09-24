@@ -150,17 +150,25 @@ gather_user_input() {
 
     # 2. 邮箱配置 (可选，用于 Let's Encrypt 证书到期告警通知)
     if [ -z "$EMAIL" ]; then
-        read -r -p "👉 请输入联系邮箱 (用于证书续期通知，建议填写，回车跳过): " INPUT_EMAIL
-        INPUT_EMAIL="$(echo "$INPUT_EMAIL" | tr -d ' ')"
+        if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
+            INPUT_EMAIL=""
+        else
+            read -r -p "👉 请输入联系邮箱 (用于证书续期通知，建议填写，回车跳过): " INPUT_EMAIL
+            INPUT_EMAIL="$(echo "$INPUT_EMAIL" | tr -d ' ')"
+        fi
     else
         INPUT_EMAIL="$EMAIL"
     fi
 
     # 3. 面板监听端口
     if [ -z "$PORT" ]; then
-        read -r -p "👉 请输入面板监听通信端口 (默认: $DEFAULT_PORT, 回车确认): " INPUT_PORT
-        INPUT_PORT="$(echo "$INPUT_PORT" | tr -d ' ')"
-        [ -z "$INPUT_PORT" ] && INPUT_PORT="$DEFAULT_PORT"
+        if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
+            INPUT_PORT="$DEFAULT_PORT"
+        else
+            read -r -p "👉 请输入面板监听通信端口 (默认: $DEFAULT_PORT, 回车确认): " INPUT_PORT
+            INPUT_PORT="$(echo "$INPUT_PORT" | tr -d ' ')"
+            [ -z "$INPUT_PORT" ] && INPUT_PORT="$DEFAULT_PORT"
+        fi
     else
         INPUT_PORT="$PORT"
     fi
@@ -168,9 +176,13 @@ gather_user_input() {
     # 4. 防探测 8 位安全路径
     local auto_secret="$(generate_random_secret)"
     if [ -z "$SECRET_PATH" ]; then
-        read -r -p "👉 请输入 8 位防探测英文安全路径 (默认随机: ${auto_secret}, 回车确认): " INPUT_SECRET
-        INPUT_SECRET="$(echo "$INPUT_SECRET" | tr -d ' ')"
-        [ -z "$INPUT_SECRET" ] && INPUT_SECRET="$auto_secret"
+        if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
+            INPUT_SECRET="$auto_secret"
+        else
+            read -r -p "👉 请输入 8 位防探测英文安全路径 (默认随机: ${auto_secret}, 回车确认): " INPUT_SECRET
+            INPUT_SECRET="$(echo "$INPUT_SECRET" | tr -d ' ')"
+            [ -z "$INPUT_SECRET" ] && INPUT_SECRET="$auto_secret"
+        fi
     else
         INPUT_SECRET="$SECRET_PATH"
     fi
@@ -178,6 +190,10 @@ gather_user_input() {
     # 校验 8 位英文字母
     while ! [[ "$INPUT_SECRET" =~ ^[a-zA-Z]{8}$ ]]; do
         log_err "安全路径必须严格为 8 位大小写英文字母！"
+        if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
+            INPUT_SECRET="$auto_secret"
+            break
+        fi
         read -r -p "请重新输入 8 位英文字母路径 (或直接回车使用 ${auto_secret}): " INPUT_SECRET
         INPUT_SECRET="$(echo "$INPUT_SECRET" | tr -d ' ')"
         [ -z "$INPUT_SECRET" ] && INPUT_SECRET="$auto_secret"
@@ -185,9 +201,13 @@ gather_user_input() {
 
     # 5. 安装目录
     if [ -z "$INSTALL_DIR" ]; then
-        read -r -p "👉 请输入安装目录路径 (默认: $DEFAULT_INSTALL_DIR, 回车确认): " INPUT_DIR
-        INPUT_DIR="$(echo "$INPUT_DIR" | tr -d ' ')"
-        [ -z "$INPUT_DIR" ] && INPUT_DIR="$DEFAULT_INSTALL_DIR"
+        if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
+            INPUT_DIR="$DEFAULT_INSTALL_DIR"
+        else
+            read -r -p "👉 请输入安装目录路径 (默认: $DEFAULT_INSTALL_DIR, 回车确认): " INPUT_DIR
+            INPUT_DIR="$(echo "$INPUT_DIR" | tr -d ' ')"
+            [ -z "$INPUT_DIR" ] && INPUT_DIR="$DEFAULT_INSTALL_DIR"
+        fi
     else
         INPUT_DIR="$INSTALL_DIR"
     fi
@@ -201,16 +221,35 @@ gather_user_input() {
     echo "  - 安装目录:     ${GREEN}${INPUT_DIR}${NC}"
     echo "  - 证书方案:     ${GREEN}Caddy 自动申请 Let's Encrypt / ZeroSSL 证书并自动在后台静默续期${NC}"
     echo ""
-    read -r -p "确认以上配置并开始部署? [Y/n]: " confirm
-    if [[ "$confirm" =~ ^[nN]$ ]]; then
-        log_warn "用户取消操作，退出脚本。"
-        exit 0
+    if [ "$NON_INTERACTIVE" != "true" ] && [ "$NON_INTERACTIVE" != "1" ]; then
+        read -r -p "确认以上配置并开始部署? [Y/n]: " confirm
+        if [[ "$confirm" =~ ^[nN]$ ]]; then
+            log_warn "用户取消操作，退出脚本。"
+            exit 0
+        fi
     fi
 }
 
 # 检查端口占用 (80, 443, $INPUT_PORT)
 check_ports() {
     log_info "正在检查端口占用情况 (80, 443, ${INPUT_PORT})..."
+    # 检查是否有名为 caddy-ssl-test 的测试容器占用了 80/443
+    if command -v docker >/dev/null 2>&1 && docker ps -a -q -f name=caddy-ssl-test 2>/dev/null | grep -q .; then
+        log_info "清理历史临时测试容器 caddy-ssl-test..."
+        docker rm -f caddy-ssl-test >/dev/null 2>&1 || true
+    fi
+
+    # 检测宿主机是否有独立原生 nezha-dashboard.service 服务占用通信端口
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nezha-dashboard.service 2>/dev/null; then
+        log_warn "检测到宿主机正在运行原生 nezha-dashboard.service 服务。"
+        read -r -p "是否停止原生服务以便无缝切换至 Docker Compose 统一管理？[Y/n]: " stop_systemd
+        if [[ ! "$stop_systemd" =~ ^[nN]$ ]]; then
+            systemctl stop nezha-dashboard.service 2>/dev/null || true
+            systemctl disable nezha-dashboard.service 2>/dev/null || true
+            log_ok "已停止并禁用原生 nezha-dashboard.service。"
+        fi
+    fi
+
     local conflict=false
     for p in 80 443 "$INPUT_PORT"; do
         if ss -tuln 2>/dev/null | grep -q ":$p " || netstat -tuln 2>/dev/null | grep -q ":$p "; then
@@ -426,7 +465,7 @@ EOF
 start_services() {
     log_info "正在拉取容器镜像并启动服务..."
     cd "$INPUT_DIR"
-    $COMPOSE_CMD pull
+    $COMPOSE_CMD pull || true
     $COMPOSE_CMD up -d
 
     log_info "等待服务启动与初始化..."
@@ -477,8 +516,24 @@ print_success() {
     echo -e "${GREEN}============================================================================${NC}"
 }
 
+# 解析命令行参数
+parse_args() {
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            -d|--domain) DOMAIN="$2"; shift 2 ;;
+            -e|--email)  EMAIL="$2"; shift 2 ;;
+            -p|--port)   PORT="$2"; shift 2 ;;
+            -s|--secret) SECRET_PATH="$2"; shift 2 ;;
+            --dir)       INSTALL_DIR="$2"; shift 2 ;;
+            -y|--yes)    NON_INTERACTIVE="true"; shift ;;
+            *) shift ;;
+        esac
+    done
+}
+
 # 脚本主执行入口
 main() {
+    parse_args "$@"
     print_banner
     check_root
     install_dependencies
