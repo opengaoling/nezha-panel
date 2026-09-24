@@ -1,5 +1,6 @@
 (function () {
-  if (window.__nezhaAuthGuardInstalled) return;
+  if (window.__gwAuthGuardInstalled || window.__nezhaAuthGuardInstalled) return;
+  window.__gwAuthGuardInstalled = true;
   window.__nezhaAuthGuardInstalled = true;
 
   var redirected = false;
@@ -95,6 +96,7 @@
             var tok = data && data.data && data.data.token;
             if (tok) {
               try {
+                localStorage.setItem("gw-token", tok);
                 localStorage.setItem("token", tok);
                 localStorage.setItem("jwt", tok);
               } catch (_e) {}
@@ -110,7 +112,7 @@
     var hasCookie = hasSessionCookie();
     var hasToken = false;
     try {
-      hasToken = !!(localStorage.getItem("token") || localStorage.getItem("jwt"));
+      hasToken = !!(localStorage.getItem("token") || localStorage.getItem("jwt") || localStorage.getItem("gw-token"));
     } catch (_e) {}
     if (hasCookie || hasToken) {
       refreshSession();
@@ -123,9 +125,11 @@
       document.cookie = "nz-csrf=; Max-Age=0; path=/; SameSite=Strict";
     } catch (_e) {}
     try {
+      localStorage.removeItem("gw-token");
       localStorage.removeItem("token");
       localStorage.removeItem("nezha-token");
       localStorage.removeItem("jwt");
+      sessionStorage.removeItem("gw-token");
       sessionStorage.removeItem("token");
       sessionStorage.removeItem("nezha-token");
       sessionStorage.removeItem("jwt");
@@ -150,7 +154,7 @@
           return "/" + parts[0];
         }
       }
-      var stored = localStorage.getItem("nz-secret-path");
+      var stored = localStorage.getItem("gw-secret-path") || localStorage.getItem("nz-secret-path");
       if (stored && /^[a-zA-Z]{8}$/.test(stored)) {
         return "/" + stored;
       }
@@ -183,6 +187,7 @@
       return;
     }
     try {
+      window.dispatchEvent(new CustomEvent("gw:auth-required"));
       window.dispatchEvent(new CustomEvent("nz:auth-required"));
     } catch (_e) {}
   }
@@ -226,6 +231,7 @@
     var detectedPrefix = getSecretPrefix();
     if (detectedPrefix) {
       var rawSec = detectedPrefix.replace(/^\//, "");
+      localStorage.setItem("gw-secret-path", rawSec);
       localStorage.setItem("nz-secret-path", rawSec);
       document.cookie = "nz-secret-path=" + rawSec + "; path=/; Max-Age=2592000; SameSite=Lax";
     }
@@ -270,20 +276,20 @@
     var nativeSend = NativeXHR.prototype.send;
 
     NativeXHR.prototype.open = function (method, url) {
-      this.__nezhaApiRequest = sameOriginApi(url);
-      this.__nezhaReqUrl = url;
+      this.__gwApiRequest = sameOriginApi(url);
+      this.__gwReqUrl = url;
       return nativeOpen.apply(this, arguments);
     };
 
     NativeXHR.prototype.send = function () {
-      if (this.__nezhaApiRequest) {
+      if (this.__gwApiRequest) {
         var self = this;
         this.addEventListener("load", function () {
           var authInvalid = "";
           try {
             authInvalid = self.getResponseHeader(authHeader) || "";
           } catch (_e) {}
-          if (self.status === 401 || authInvalid === "1" || (self.status === 404 && isProtectedApi(self.__nezhaReqUrl))) {
+          if (self.status === 401 || authInvalid === "1" || (self.status === 404 && isProtectedApi(self.__gwReqUrl))) {
             redirectForAuth();
           }
         });

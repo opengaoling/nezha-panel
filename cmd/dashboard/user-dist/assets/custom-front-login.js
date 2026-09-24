@@ -7,16 +7,16 @@
 (function () {
   'use strict';
 
-  if (window.__nzLoginGateInstalled) return;
-  window.__nzLoginGateInstalled = true;
+  if (window.__gwLoginGateInstalled) return;
+  window.__gwLoginGateInstalled = true;
 
-  var AUTH_COOKIE_NAME = "nz-jwt";
-  var CSRF_COOKIE_NAME = "nz-csrf";
+  var AUTH_COOKIE_NAME = "___COOKIE___gw-jwt";
+  var CSRF_COOKIE_NAME = "___COOKIE___gw-csrf";
   var THEME_STORAGE_KEY = "vite-ui-theme";
-  var USER_STORAGE_KEY = "nz-user-profile";
-  var SAVED_USER_KEY = "nz-saved-username";
+  var USER_STORAGE_KEY = "gw-user-profile";
+  var SAVED_USER_KEY = "gw-saved-username";
 
-  // Immediately activate nz-force-auth if unauthenticated to present the security disguise gate
+  // Immediately activate gw-force-auth if unauthenticated to present the security disguise gate
   try {
     var preCookie = !!(document.cookie && document.cookie.indexOf(AUTH_COOKIE_NAME + "=") !== -1);
     var preToken = false;
@@ -24,12 +24,12 @@
       preToken = !!(localStorage.getItem("token") || localStorage.getItem("jwt"));
     } catch (_e) {}
     if (preCookie || preToken) {
-      document.documentElement.classList.add("nz-authenticated");
-      document.documentElement.classList.remove("nz-force-auth");
+      document.documentElement.classList.add("gw-authenticated");
+      document.documentElement.classList.remove("gw-force-auth");
       document.title = "系统监控中心 · System Dashboard";
     } else {
-      document.documentElement.classList.add("nz-force-auth");
-      document.documentElement.classList.remove("nz-authenticated");
+      document.documentElement.classList.add("gw-force-auth");
+      document.documentElement.classList.remove("gw-authenticated");
       document.title = "安全访问网关 · Security Gateway";
     }
   } catch (_e) {}
@@ -39,7 +39,7 @@
     var titleEl = document.querySelector("title");
     if (titleEl && window.MutationObserver) {
       var titleObs = new MutationObserver(function () {
-        if (!document.documentElement.classList.contains("nz-authenticated")) {
+        if (!document.documentElement.classList.contains("gw-authenticated")) {
           if (document.title !== "安全访问网关 · Security Gateway") {
             document.title = "安全访问网关 · Security Gateway";
           }
@@ -66,21 +66,21 @@
 
   // Helper: Secret path prefix detection
   function getSecretPrefix() {
-    var secretCookie = getCookie("nz-secret-path");
+    var secretCookie = getCookie("___COOKIE___gw-secret-path");
     if (secretCookie) {
-      try { localStorage.setItem("nz-secret-path", secretCookie); } catch (_e) {}
+      try { localStorage.setItem("___COOKIE___gw-secret-path", secretCookie); } catch (_e) {}
       return "/" + encodeURIComponent(secretCookie);
     }
     var parts = window.location.pathname.split("/").filter(Boolean);
     if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
       var first = parts[0].toLowerCase();
       if (first !== "settings" && first !== "terminal" && first !== "transfer") {
-        try { localStorage.setItem("nz-secret-path", parts[0]); } catch (_e) {}
+        try { localStorage.setItem("___COOKIE___gw-secret-path", parts[0]); } catch (_e) {}
         return "/" + parts[0];
       }
     }
     try {
-      var stored = localStorage.getItem("nz-secret-path");
+      var stored = localStorage.getItem("___COOKIE___gw-secret-path");
       if (stored && /^[a-zA-Z]{8}$/.test(stored)) {
         return "/" + stored;
       }
@@ -140,7 +140,7 @@
   }
 
   function updateThemeIcon(theme) {
-    var btn = document.getElementById("nz-theme-toggle-btn");
+    var btn = document.getElementById("gw-theme-toggle-btn");
     if (!btn) return;
     if (theme === "dark") {
       // Sun icon for dark mode (click to switch to light)
@@ -155,7 +155,7 @@
 
   function bindGateEvents() {
     // Bind theme button
-    var themeBtn = document.getElementById("nz-theme-toggle-btn");
+    var themeBtn = document.getElementById("gw-theme-toggle-btn");
     if (themeBtn && !themeBtn.__bound) {
       themeBtn.__bound = true;
       updateThemeIcon(getCurrentTheme());
@@ -163,14 +163,14 @@
     }
 
     // Bind password toggle
-    var pwdInput = document.getElementById("nz-password");
-    var pwdToggle = document.getElementById("nz-pwd-toggle");
+    var pwdInput = document.getElementById("gw-password");
+    var pwdToggle = document.getElementById("gw-pwd-toggle");
     if (pwdInput && pwdToggle && !pwdToggle.__bound) {
       pwdToggle.__bound = true;
       pwdToggle.addEventListener("click", function () {
         var isPwd = pwdInput.type === "password";
         pwdInput.type = isPwd ? "text" : "password";
-        var eyeIcon = document.getElementById("nz-eye-icon");
+        var eyeIcon = document.getElementById("gw-eye-icon");
         if (eyeIcon) {
           eyeIcon.innerHTML = isPwd
             ? '<path d="m15 18-.722-3.25"/><path d="M2 8a10.645 10.645 0 0 0 20 0"/><path d="m20 15-1.726-2.05"/><path d="m4 15 1.726-2.05"/><path d="m9 18 .722-3.25"/>'
@@ -182,8 +182,8 @@
     // Prepopulate saved username if available
     try {
       var savedUser = localStorage.getItem(SAVED_USER_KEY);
-      var userField = document.getElementById("nz-username");
-      var rememberCheck = document.getElementById("nz-remember-check");
+      var userField = document.getElementById("gw-username");
+      var rememberCheck = document.getElementById("gw-remember-check");
       if (savedUser && userField) {
         userField.value = savedUser;
         if (rememberCheck) rememberCheck.checked = true;
@@ -196,13 +196,13 @@
     // Update admin link href with secret prefix if applicable
     var secretPrefix = getSecretPrefix();
     var dashUrl = secretPrefix ? secretPrefix + "/dashboard/" : "/dashboard/";
-    var adminLinks = document.querySelectorAll(".nz-admin-link");
+    var adminLinks = document.querySelectorAll(".gw-admin-link");
     for (var i = 0; i < adminLinks.length; i++) {
       adminLinks[i].setAttribute("href", dashUrl);
     }
 
     // Bind login form submit
-    var form = document.getElementById("nz-login-form");
+    var form = document.getElementById("gw-login-form");
     if (form && !form.__bound) {
       form.__bound = true;
       form.addEventListener("submit", handleLoginSubmit);
@@ -211,9 +211,9 @@
 
   // Render Login Gate Template into DOM
   function ensureLoginGateDOM() {
-    var existing = document.getElementById("nz-login-gate");
+    var existing = document.getElementById("gw-login-gate");
     if (existing) {
-      existing.classList.remove("nz-gate-animating");
+      existing.classList.remove("gw-gate-animating");
       existing.style.display = "flex";
       existing.style.opacity = "1";
       existing.style.transform = "none";
@@ -224,26 +224,26 @@
     }
 
     var container = document.createElement("div");
-    container.id = "nz-login-gate";
+    container.id = "gw-login-gate";
     container.innerHTML = [
-      '<div class="nz-bg-decor">',
-      '  <div class="nz-bg-grid"></div>',
-      '  <div class="nz-glow-orb nz-glow-orb-1"></div>',
-      '  <div class="nz-glow-orb nz-glow-orb-2"></div>',
-      '  <div class="nz-glow-orb nz-glow-orb-3"></div>',
+      '<div class="gw-bg-decor">',
+      '  <div class="gw-bg-grid"></div>',
+      '  <div class="gw-glow-orb gw-glow-orb-1"></div>',
+      '  <div class="gw-glow-orb gw-glow-orb-2"></div>',
+      '  <div class="gw-glow-orb gw-glow-orb-3"></div>',
       '</div>',
-      '<div class="nz-top-bar">',
-      '  <button type="button" class="nz-theme-btn" id="nz-theme-toggle-btn" aria-label="Toggle Theme">',
+      '<div class="gw-top-bar">',
+      '  <button type="button" class="gw-theme-btn" id="gw-theme-toggle-btn" aria-label="Toggle Theme">',
       '  </button>',
       '</div>',
-      '<div class="nz-login-card" id="nz-login-card">',
-      '  <div class="nz-card-header">',
-      '    <div class="nz-logo-wrapper">',
-      '      <div class="nz-logo-pulse"></div>',
-      '      <div class="nz-logo-box">',
-      '        <svg viewBox="0 0 24 24" fill="none" stroke="url(#nz-logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">',
+      '<div class="gw-login-card" id="gw-login-card">',
+      '  <div class="gw-card-header">',
+      '    <div class="gw-logo-wrapper">',
+      '      <div class="gw-logo-pulse"></div>',
+      '      <div class="gw-logo-box">',
+      '        <svg viewBox="0 0 24 24" fill="none" stroke="url(#gw-logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">',
       '          <defs>',
-      '            <linearGradient id="nz-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">',
+      '            <linearGradient id="gw-logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">',
       '              <stop offset="0%" stop-color="#38bdf8" />',
       '              <stop offset="50%" stop-color="#818cf8" />',
       '              <stop offset="100%" stop-color="#c084fc" />',
@@ -253,55 +253,55 @@
       '        </svg>',
       '      </div>',
       '    </div>',
-      '    <h1 class="nz-brand-title">安全访问网关</h1>',
-      '    <div class="nz-brand-subtitle">SECURITY ACCESS GATEWAY · 访问控制</div>',
-      '    <div class="nz-gateway-badge">',
-      '      <span class="nz-pulse-dot"></span>',
+      '    <h1 class="gw-brand-title">安全访问网关</h1>',
+      '    <div class="gw-brand-subtitle">SECURITY ACCESS GATEWAY · 访问控制</div>',
+      '    <div class="gw-gateway-badge">',
+      '      <span class="gw-pulse-dot"></span>',
       '      <span>安全认证网关已就绪</span>',
       '    </div>',
       '  </div>',
-      '  <div class="nz-alert nz-alert-error" id="nz-alert-error">',
+      '  <div class="gw-alert gw-alert-error" id="gw-alert-error">',
       '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
-      '    <span id="nz-error-text">访问账号或访问凭证错误</span>',
+      '    <span id="gw-error-text">访问账号或访问凭证错误</span>',
       '  </div>',
-      '  <div class="nz-alert nz-alert-success" id="nz-alert-success">',
+      '  <div class="gw-alert gw-alert-success" id="gw-alert-success">',
       '    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>',
-      '    <span id="nz-success-text">验证成功，正在进入系统...</span>',
+      '    <span id="gw-success-text">验证成功，正在进入系统...</span>',
       '  </div>',
-      '  <form class="nz-form" id="nz-login-form" autocomplete="on">',
-      '    <div class="nz-field-group">',
-      '      <label class="nz-label" for="nz-username">访问账号</label>',
-      '      <div class="nz-input-wrap">',
-      '        <div class="nz-input-icon">',
+      '  <form class="gw-form" id="gw-login-form" autocomplete="on">',
+      '    <div class="gw-field-group">',
+      '      <label class="gw-label" for="gw-username">访问账号</label>',
+      '      <div class="gw-input-wrap">',
+      '        <div class="gw-input-icon">',
       '          <svg viewBox="0 0 24 24"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
       '        </div>',
-      '        <input type="text" id="nz-username" class="nz-input" placeholder="请输入访问账号" required autocomplete="username" spellcheck="false" />',
+      '        <input type="text" id="gw-username" class="gw-input" placeholder="请输入访问账号" required autocomplete="username" spellcheck="false" />',
       '      </div>',
       '    </div>',
-      '    <div class="nz-field-group">',
-      '      <label class="nz-label" for="nz-password">访问凭证</label>',
-      '      <div class="nz-input-wrap">',
-      '        <div class="nz-input-icon">',
+      '    <div class="gw-field-group">',
+      '      <label class="gw-label" for="gw-password">访问凭证</label>',
+      '      <div class="gw-input-wrap">',
+      '        <div class="gw-input-icon">',
       '          <svg viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
       '        </div>',
-      '        <input type="password" id="nz-password" class="nz-input" placeholder="请输入访问凭证" required autocomplete="current-password" />',
-      '        <button type="button" class="nz-pwd-toggle" id="nz-pwd-toggle" aria-label="Toggle Password Visibility">',
-      '          <svg id="nz-eye-icon" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
+      '        <input type="password" id="gw-password" class="gw-input" placeholder="请输入访问凭证" required autocomplete="current-password" />',
+      '        <button type="button" class="gw-pwd-toggle" id="gw-pwd-toggle" aria-label="Toggle Password Visibility">',
+      '          <svg id="gw-eye-icon" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>',
       '        </button>',
       '      </div>',
       '    </div>',
-      '    <div class="nz-form-options">',
-      '      <label class="nz-remember-label">',
-      '        <input type="checkbox" id="nz-remember-check" class="nz-remember-checkbox" />',
+      '    <div class="gw-form-options">',
+      '      <label class="gw-remember-label">',
+      '        <input type="checkbox" id="gw-remember-check" class="gw-remember-checkbox" />',
       '        <span>保持登录状态</span>',
       '      </label>',
       '    </div>',
-      '    <button type="submit" class="nz-submit-btn" id="nz-submit-btn">',
-      '      <span class="nz-spinner"></span>',
-      '      <span class="nz-btn-text">身 份 验 证</span>',
+      '    <button type="submit" class="gw-submit-btn" id="gw-submit-btn">',
+      '      <span class="gw-spinner"></span>',
+      '      <span class="gw-btn-text">身 份 验 证</span>',
       '    </button>',
       '  </form>',
-      '  <div class="nz-card-footer">',
+      '  <div class="gw-card-footer">',
       '    <div>统一访问网关 · 安全身份控制系统</div>',
       '    <div style="opacity: 0.6; margin-top: 2px;">End-to-End Encrypted Security Gateway</div>',
       '  </div>',
@@ -320,14 +320,14 @@
   function handleLoginSubmit(event) {
     if (event) event.preventDefault();
 
-    var userInput = document.getElementById("nz-username");
-    var pwdInput = document.getElementById("nz-password");
-    var submitBtn = document.getElementById("nz-submit-btn");
-    var card = document.getElementById("nz-login-card");
-    var errAlert = document.getElementById("nz-alert-error");
-    var errText = document.getElementById("nz-error-text");
-    var succAlert = document.getElementById("nz-alert-success");
-    var rememberCheck = document.getElementById("nz-remember-check");
+    var userInput = document.getElementById("gw-username");
+    var pwdInput = document.getElementById("gw-password");
+    var submitBtn = document.getElementById("gw-submit-btn");
+    var card = document.getElementById("gw-login-card");
+    var errAlert = document.getElementById("gw-alert-error");
+    var errText = document.getElementById("gw-error-text");
+    var succAlert = document.getElementById("gw-alert-success");
+    var rememberCheck = document.getElementById("gw-remember-check");
 
     if (!userInput || !pwdInput || !submitBtn) return;
 
@@ -340,20 +340,20 @@
     }
 
     // Set loading state
-    submitBtn.classList.add("nz-loading");
+    submitBtn.classList.add("gw-loading");
     submitBtn.disabled = true;
-    if (errAlert) errAlert.classList.remove("nz-show");
-    if (succAlert) succAlert.classList.remove("nz-show");
+    if (errAlert) errAlert.classList.remove("gw-show");
+    if (succAlert) succAlert.classList.remove("gw-show");
 
     function showError(msg) {
-      submitBtn.classList.remove("nz-loading");
+      submitBtn.classList.remove("gw-loading");
       submitBtn.disabled = false;
       if (errText) errText.textContent = msg || "用户名或密码错误";
-      if (errAlert) errAlert.classList.add("nz-show");
+      if (errAlert) errAlert.classList.add("gw-show");
       if (card) {
-        card.classList.remove("nz-shake");
+        card.classList.remove("gw-shake");
         void card.offsetWidth; // trigger reflow
-        card.classList.add("nz-shake");
+        card.classList.add("gw-shake");
       }
       pwdInput.focus();
       pwdInput.select();
@@ -408,7 +408,7 @@
           localStorage.setItem(USER_STORAGE_KEY, JSON.stringify({ username: username }));
         } catch (_e) {}
 
-        if (succAlert) succAlert.classList.add("nz-show");
+        if (succAlert) succAlert.classList.add("gw-show");
 
         // Unlock gate with smooth transition
         setTimeout(function () {
@@ -422,13 +422,13 @@
 
   // Unlock gate and reveal dashboard smoothly without reloading
   function unlockGateAndEnter() {
-    document.documentElement.classList.remove("nz-force-auth");
-    document.documentElement.classList.add("nz-authenticated");
+    document.documentElement.classList.remove("gw-force-auth");
+    document.documentElement.classList.add("gw-authenticated");
     document.title = "系统监控中心 · System Dashboard";
 
-    var gate = document.getElementById("nz-login-gate");
+    var gate = document.getElementById("gw-login-gate");
     if (gate) {
-      gate.classList.add("nz-gate-animating");
+      gate.classList.add("gw-gate-animating");
       gate.style.transition = "opacity 0.35s cubic-bezier(0.4, 0, 0.2, 1), transform 0.35s ease";
       gate.style.opacity = "0";
       gate.style.transform = "scale(0.98)";
@@ -466,10 +466,10 @@
 
   // Mount Dashboard User Status Pill & Logout Button
   function mountDashboardUserPill(username) {
-    if (document.getElementById("nz-auth-pill")) return;
+    if (document.getElementById("gw-auth-pill")) return;
 
     function renderPill() {
-      if (document.getElementById("nz-auth-pill")) return;
+      if (document.getElementById("gw-auth-pill")) return;
       var target = document.body || document.documentElement;
       if (!target) return;
 
@@ -477,20 +477,20 @@
       var dashUrl = prefix ? prefix + "/dashboard/" : "/dashboard/";
 
       var pill = document.createElement("div");
-      pill.id = "nz-auth-pill";
+      pill.id = "gw-auth-pill";
 
       var displayName = username || "管理员";
       var avatarLetter = displayName.charAt(0).toUpperCase();
 
       pill.innerHTML = [
-        '<div class="nz-pill-avatar">' + avatarLetter + '</div>',
-        '<span class="nz-pill-user" title="' + displayName + '">' + displayName + '</span>',
-        '<div class="nz-pill-actions">',
-        '  <a href="' + dashUrl + '" class="nz-pill-btn" title="进入控制台">',
+        '<div class="gw-pill-avatar">' + avatarLetter + '</div>',
+        '<span class="gw-pill-user" title="' + displayName + '">' + displayName + '</span>',
+        '<div class="gw-pill-actions">',
+        '  <a href="' + dashUrl + '" class="gw-pill-btn" title="进入控制台">',
         '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>',
         '    <span>控制台</span>',
         '  </a>',
-        '  <button type="button" class="nz-pill-btn nz-pill-logout" id="nz-logout-btn" title="退出登录">',
+        '  <button type="button" class="gw-pill-btn gw-pill-logout" id="gw-logout-btn" title="退出登录">',
         '    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>',
         '    <span>退出</span>',
         '  </button>',
@@ -499,17 +499,17 @@
 
       target.appendChild(pill);
 
-      var adminLinks = document.querySelectorAll(".nz-admin-link");
+      var adminLinks = document.querySelectorAll(".gw-admin-link");
       for (var i = 0; i < adminLinks.length; i++) {
         adminLinks[i].setAttribute("href", dashUrl);
       }
 
-      var logoutBtn = document.getElementById("nz-logout-btn");
+      var logoutBtn = document.getElementById("gw-logout-btn");
       if (logoutBtn) {
         logoutBtn.addEventListener("click", function () {
           if (window.confirm("确定要退出登录吗？")) {
             clearAuthSession();
-            document.documentElement.classList.remove("nz-authenticated");
+            document.documentElement.classList.remove("gw-authenticated");
             window.location.reload();
           }
         });
@@ -535,8 +535,8 @@
 
     // If no credentials exist anywhere, definitely not logged in -> activate front disguise gate
     if (!hasCookie && !hasStorageToken) {
-      document.documentElement.classList.remove("nz-authenticated");
-      document.documentElement.classList.add("nz-force-auth");
+      document.documentElement.classList.remove("gw-authenticated");
+      document.documentElement.classList.add("gw-force-auth");
       document.title = "安全访问网关 · Security Gateway";
       ensureLoginGateDOM();
       return;
@@ -576,10 +576,10 @@
           } catch (_e) {}
 
           // Session is fully verified & active!
-          document.documentElement.classList.add("nz-authenticated");
-          document.documentElement.classList.remove("nz-force-auth");
+          document.documentElement.classList.add("gw-authenticated");
+          document.documentElement.classList.remove("gw-force-auth");
           document.title = "系统监控中心 · System Dashboard";
-          var gate = document.getElementById("nz-login-gate");
+          var gate = document.getElementById("gw-login-gate");
           if (gate && gate.parentNode) {
             gate.parentNode.removeChild(gate);
           }
@@ -591,8 +591,8 @@
         if (err && err.message === "Unauthorized") {
           // Session invalid or expired: clear and show security gate
           clearAuthSession();
-          document.documentElement.classList.remove("nz-authenticated");
-          document.documentElement.classList.add("nz-force-auth");
+          document.documentElement.classList.remove("gw-authenticated");
+          document.documentElement.classList.add("gw-force-auth");
           document.title = "安全访问网关 · Security Gateway";
           ensureLoginGateDOM();
         }
@@ -600,10 +600,12 @@
   }
 
   // Hook into auth guard events for automatic logout on 401
-  window.addEventListener("nz:auth-required", function () {
+  window.addEventListener("gw:auth-required", handleAuthRequired);
+  window.addEventListener("nz:auth-required", handleAuthRequired);
+  function handleAuthRequired() {
     clearAuthSession();
-    document.documentElement.classList.remove("nz-authenticated");
-    document.documentElement.classList.add("nz-force-auth");
+    document.documentElement.classList.remove("gw-authenticated");
+    document.documentElement.classList.add("gw-force-auth");
     ensureLoginGateDOM();
   });
 

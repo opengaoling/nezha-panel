@@ -8,7 +8,7 @@
         <script>
           // Early WAF gate & White Screen Auto-Recovery Guard
           ;(function(){
-            var RELOAD_KEY = "nz_admin_white_screen_recovery";
+            var RELOAD_KEY = "gw_admin_white_screen_recovery";
             var MAX_RELOAD_INTERVAL = 8000;
 
             function canAutoRecover() {
@@ -41,7 +41,10 @@
                     if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0]) && !/^(dashboard|settings|terminal|transfer)$/i.test(parts[0])) {
                       p = '/' + parts[0];
                     } else {
-                      try { var s = localStorage.getItem('nz-secret-path'); if (s && /^[a-zA-Z]{8}$/.test(s)) p = '/' + s; } catch(_) {}
+                      try {
+                        var s = localStorage.getItem('gw-secret-path') || localStorage.getItem('nz-secret-path');
+                        if (s && /^[a-zA-Z]{8}$/.test(s)) p = '/' + s;
+                      } catch(_) {}
                     }
                   }
                   var cleanSearch = '';

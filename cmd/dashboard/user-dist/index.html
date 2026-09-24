@@ -78,7 +78,7 @@
     <script>
       /* Global White Screen Auto-Recovery Guard */
       ;(function() {
-        var RELOAD_KEY = "nz_user_white_screen_recovery";
+        var RELOAD_KEY = "gw_user_white_screen_recovery";
         var MAX_RELOAD_INTERVAL = 8000;
 
         function canAutoRecover() {
@@ -121,9 +121,9 @@
           if (document.hidden) return;
           window.setTimeout(function() {
             var root = document.getElementById("root");
-            var gate = document.getElementById("nz-login-gate");
-            var isForceAuth = document.documentElement.classList.contains("nz-force-auth");
-            var isAuth = document.documentElement.classList.contains("nz-authenticated");
+            var gate = document.getElementById("gw-login-gate");
+            var isForceAuth = document.documentElement.classList.contains("gw-force-auth");
+            var isAuth = document.documentElement.classList.contains("gw-authenticated");
             var rootEmpty = root && (!root.childNodes || root.childNodes.length === 0 || root.offsetHeight === 0);
             var rootHidden = root && window.getComputedStyle(root).display === "none";
             var gateMissing = !gate || window.getComputedStyle(gate).display === "none" || window.getComputedStyle(gate).opacity === "0";
@@ -142,9 +142,9 @@
       })();
     </script>
 
-    <link rel="stylesheet" crossorigin href="/assets/custom-front-login.css?v=front-login-20260924a">
-    <script src="/assets/custom-front-login.js?v=front-login-20260924a"></script>
-    <script src="/assets/custom-front-theme.js?v=front-theme-20260924a" defer></script>
+    <link rel="stylesheet" crossorigin href="/assets/custom-front-login.css?v=front-login-20260924b">
+    <script src="/assets/custom-front-login.js?v=front-login-20260924b"></script>
+    <script src="/assets/custom-front-theme.js?v=front-theme-20260924b" defer></script>
     <script src="/assets/custom-front-server-filter.js?v=front-server-filter-20260723d" defer></script>
     <script type="module" crossorigin src="/assets/index.custom-mobile-flagcss-20260611.js?v=frontfix-20260924a"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime.Cyuzqnbw.js?v=frontfix-20260613c">

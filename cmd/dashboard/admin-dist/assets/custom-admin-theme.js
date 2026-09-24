@@ -13,11 +13,13 @@
       }
     }
     if (!prefix) {
-      var s = localStorage.getItem("nz-secret-path");
+      var s = localStorage.getItem("gw-secret-path") || localStorage.getItem("nz-secret-path");
       if (s && /^[a-zA-Z]{8}$/.test(s)) prefix = "/" + s;
     }
-    window.__nzHomeHref = (prefix || "") + "/";
+    window.__gwHomeHref = (prefix || "") + "/";
+    window.__nzHomeHref = window.__gwHomeHref;
   } catch (_e) {
+    window.__gwHomeHref = "/";
     window.__nzHomeHref = "/";
   }
   var scripts = [

@@ -5,25 +5,25 @@
  */
 
 /* Gating rule: Root is only hidden when force-auth gate is explicitly activated */
-html.nz-force-auth:not(.nz-authenticated) #root {
+html.gw-force-auth:not(.gw-authenticated) #root {
   display: none !important;
 }
 
-html.nz-force-auth #nz-login-gate {
+html.gw-force-auth #gw-login-gate {
   display: flex !important;
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
 }
 
-html.nz-authenticated #nz-login-gate:not(.nz-gate-animating) {
+html.gw-authenticated #gw-login-gate:not(.gw-gate-animating) {
   display: none !important;
 }
 
 /* ==========================================================================
    Login Gate Fullscreen Container
    ========================================================================== */
-#nz-login-gate {
+#gw-login-gate {
   position: fixed;
   inset: 0;
   z-index: 999999;
@@ -44,81 +44,81 @@ html.nz-authenticated #nz-login-gate:not(.nz-gate-animating) {
 }
 
 /* Dark Theme Variables & Atmosphere */
-html.dark #nz-login-gate,
-html:not(.light) #nz-login-gate {
-  --nz-bg: #090d16;
-  --nz-card-bg: rgba(15, 23, 42, 0.75);
-  --nz-card-border: rgba(255, 255, 255, 0.09);
-  --nz-card-border-glow: rgba(99, 102, 241, 0.25);
-  --nz-text-main: #f8fafc;
-  --nz-text-sub: #94a3b8;
-  --nz-text-muted: #64748b;
-  --nz-input-bg: rgba(30, 41, 59, 0.65);
-  --nz-input-border: rgba(255, 255, 255, 0.12);
-  --nz-input-focus-border: #6366f1;
-  --nz-input-focus-glow: rgba(99, 102, 241, 0.3);
-  --nz-primary-from: #4f46e5;
-  --nz-primary-mid: #7c3aed;
-  --nz-primary-to: #06b6d4;
-  --nz-primary-shadow: rgba(99, 102, 241, 0.4);
-  --nz-error-bg: rgba(239, 68, 68, 0.15);
-  --nz-error-border: rgba(239, 68, 68, 0.35);
-  --nz-error-text: #fca5a5;
-  --nz-success-bg: rgba(34, 197, 94, 0.15);
-  --nz-success-border: rgba(34, 197, 94, 0.35);
-  --nz-success-text: #86efac;
-  --nz-grid-color: rgba(255, 255, 255, 0.03);
-  background-color: var(--nz-bg);
+html.dark #gw-login-gate,
+html:not(.light) #gw-login-gate {
+  --gw-bg: #090d16;
+  --gw-card-bg: rgba(15, 23, 42, 0.75);
+  --gw-card-border: rgba(255, 255, 255, 0.09);
+  --gw-card-border-glow: rgba(99, 102, 241, 0.25);
+  --gw-text-main: #f8fafc;
+  --gw-text-sub: #94a3b8;
+  --gw-text-muted: #64748b;
+  --gw-input-bg: rgba(30, 41, 59, 0.65);
+  --gw-input-border: rgba(255, 255, 255, 0.12);
+  --gw-input-focus-border: #6366f1;
+  --gw-input-focus-glow: rgba(99, 102, 241, 0.3);
+  --gw-primary-from: #4f46e5;
+  --gw-primary-mid: #7c3aed;
+  --gw-primary-to: #06b6d4;
+  --gw-primary-shadow: rgba(99, 102, 241, 0.4);
+  --gw-error-bg: rgba(239, 68, 68, 0.15);
+  --gw-error-border: rgba(239, 68, 68, 0.35);
+  --gw-error-text: #fca5a5;
+  --gw-success-bg: rgba(34, 197, 94, 0.15);
+  --gw-success-border: rgba(34, 197, 94, 0.35);
+  --gw-success-text: #86efac;
+  --gw-grid-color: rgba(255, 255, 255, 0.03);
+  background-color: var(--gw-bg);
 }
 
 /* Light Theme Variables & Atmosphere */
-html.light #nz-login-gate {
-  --nz-bg: #f1f5f9;
-  --nz-card-bg: rgba(255, 255, 255, 0.85);
-  --nz-card-border: rgba(226, 232, 240, 0.9);
-  --nz-card-border-glow: rgba(99, 102, 241, 0.2);
-  --nz-text-main: #0f172a;
-  --nz-text-sub: #475569;
-  --nz-text-muted: #94a3b8;
-  --nz-input-bg: rgba(248, 250, 252, 0.9);
-  --nz-input-border: rgba(203, 213, 225, 0.9);
-  --nz-input-focus-border: #4f46e5;
-  --nz-input-focus-glow: rgba(79, 70, 229, 0.2);
-  --nz-primary-from: #4338ca;
-  --nz-primary-mid: #6d28d9;
-  --nz-primary-to: #0284c7;
-  --nz-primary-shadow: rgba(79, 70, 229, 0.3);
-  --nz-error-bg: rgba(254, 242, 242, 0.9);
-  --nz-error-border: rgba(252, 165, 165, 0.8);
-  --nz-error-text: #b91c1c;
-  --nz-success-bg: rgba(240, 253, 244, 0.9);
-  --nz-success-border: rgba(187, 247, 208, 0.8);
-  --nz-success-text: #15803d;
-  --nz-grid-color: rgba(0, 0, 0, 0.035);
-  background-color: var(--nz-bg);
+html.light #gw-login-gate {
+  --gw-bg: #f1f5f9;
+  --gw-card-bg: rgba(255, 255, 255, 0.85);
+  --gw-card-border: rgba(226, 232, 240, 0.9);
+  --gw-card-border-glow: rgba(99, 102, 241, 0.2);
+  --gw-text-main: #0f172a;
+  --gw-text-sub: #475569;
+  --gw-text-muted: #94a3b8;
+  --gw-input-bg: rgba(248, 250, 252, 0.9);
+  --gw-input-border: rgba(203, 213, 225, 0.9);
+  --gw-input-focus-border: #4f46e5;
+  --gw-input-focus-glow: rgba(79, 70, 229, 0.2);
+  --gw-primary-from: #4338ca;
+  --gw-primary-mid: #6d28d9;
+  --gw-primary-to: #0284c7;
+  --gw-primary-shadow: rgba(79, 70, 229, 0.3);
+  --gw-error-bg: rgba(254, 242, 242, 0.9);
+  --gw-error-border: rgba(252, 165, 165, 0.8);
+  --gw-error-text: #b91c1c;
+  --gw-success-bg: rgba(240, 253, 244, 0.9);
+  --gw-success-border: rgba(187, 247, 208, 0.8);
+  --gw-success-text: #15803d;
+  --gw-grid-color: rgba(0, 0, 0, 0.035);
+  background-color: var(--gw-bg);
 }
 
 /* High-tech Cyber Grid Background */
-.nz-bg-decor {
+.gw-bg-decor {
   position: absolute;
   inset: 0;
   pointer-events: none;
   overflow: hidden;
 }
 
-.nz-bg-grid {
+.gw-bg-grid {
   position: absolute;
   inset: 0;
   background-image: 
-    linear-gradient(to right, var(--nz-grid-color) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--nz-grid-color) 1px, transparent 1px);
+    linear-gradient(to right, var(--gw-grid-color) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--gw-grid-color) 1px, transparent 1px);
   background-size: 32px 32px;
   mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.8) 0%, transparent 80%);
   -webkit-mask-image: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.8) 0%, transparent 80%);
 }
 
 /* Animated Ambient Glow Orbs */
-.nz-glow-orb {
+.gw-glow-orb {
   position: absolute;
   border-radius: 50%;
   filter: blur(90px);
@@ -127,34 +127,34 @@ html.light #nz-login-gate {
   will-change: transform;
 }
 
-.nz-glow-orb-1 {
+.gw-glow-orb-1 {
   top: 15%;
   left: 20%;
   width: 420px;
   height: 420px;
   background: radial-gradient(circle, rgba(99, 102, 241, 0.45) 0%, rgba(139, 92, 246, 0.15) 70%, transparent 100%);
-  animation: nz-float-orb 12s ease-in-out infinite alternate;
+  animation: gw-float-orb 12s ease-in-out infinite alternate;
 }
 
-.nz-glow-orb-2 {
+.gw-glow-orb-2 {
   bottom: 15%;
   right: 20%;
   width: 380px;
   height: 380px;
   background: radial-gradient(circle, rgba(6, 182, 212, 0.4) 0%, rgba(59, 130, 246, 0.15) 70%, transparent 100%);
-  animation: nz-float-orb 15s ease-in-out infinite alternate-reverse;
+  animation: gw-float-orb 15s ease-in-out infinite alternate-reverse;
 }
 
-.nz-glow-orb-3 {
+.gw-glow-orb-3 {
   top: 60%;
   left: 10%;
   width: 280px;
   height: 280px;
   background: radial-gradient(circle, rgba(236, 72, 153, 0.25) 0%, transparent 70%);
-  animation: nz-float-orb 10s ease-in-out infinite alternate;
+  animation: gw-float-orb 10s ease-in-out infinite alternate;
 }
 
-@keyframes nz-float-orb {
+@keyframes gw-float-orb {
   0% { transform: translate(0, 0) scale(1); }
   50% { transform: translate(30px, -40px) scale(1.08); }
   100% { transform: translate(-25px, 35px) scale(0.95); }
@@ -163,7 +163,7 @@ html.light #nz-login-gate {
 /* ==========================================================================
    Top Utility Bar (Theme Toggle, Gateway Indicator)
    ========================================================================== */
-.nz-top-bar {
+.gw-top-bar {
   position: absolute;
   top: 24px;
   right: 24px;
@@ -173,31 +173,31 @@ html.light #nz-login-gate {
   z-index: 10;
 }
 
-.nz-theme-btn {
+.gw-theme-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 38px;
   height: 38px;
   border-radius: 12px;
-  border: 1px solid var(--nz-card-border);
-  background: var(--nz-card-bg);
+  border: 1px solid var(--gw-card-border);
+  background: var(--gw-card-bg);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  color: var(--nz-text-main);
+  color: var(--gw-text-main);
   cursor: pointer;
   outline: none;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-.nz-theme-btn:hover {
+.gw-theme-btn:hover {
   transform: translateY(-2px);
-  border-color: var(--nz-input-focus-border);
-  box-shadow: 0 6px 16px var(--nz-input-focus-glow);
+  border-color: var(--gw-input-focus-border);
+  box-shadow: 0 6px 16px var(--gw-input-focus-glow);
 }
 
-.nz-theme-btn svg {
+.gw-theme-btn svg {
   width: 18px;
   height: 18px;
   stroke: currentColor;
@@ -208,7 +208,7 @@ html.light #nz-login-gate {
 /* ==========================================================================
    Central Login Card
    ========================================================================== */
-.nz-login-card {
+.gw-login-card {
   position: relative;
   z-index: 5;
   width: 100%;
@@ -216,19 +216,19 @@ html.light #nz-login-gate {
   margin: auto;
   padding: 40px 36px;
   box-sizing: border-box;
-  background: var(--nz-card-bg);
-  border: 1px solid var(--nz-card-border);
+  background: var(--gw-card-bg);
+  border: 1px solid var(--gw-card-border);
   border-radius: 26px;
   backdrop-filter: blur(28px);
   -webkit-backdrop-filter: blur(28px);
   box-shadow: 
     0 25px 60px -15px rgba(0, 0, 0, 0.45),
-    0 0 35px var(--nz-card-border-glow),
+    0 0 35px var(--gw-card-border-glow),
     inset 0 1px 0 rgba(255, 255, 255, 0.15);
-  animation: nz-card-appear 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: gw-card-appear 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-@keyframes nz-card-appear {
+@keyframes gw-card-appear {
   0% {
     opacity: 0;
     transform: translateY(24px) scale(0.96);
@@ -240,11 +240,11 @@ html.light #nz-login-gate {
 }
 
 /* Error Shake Animation */
-.nz-login-card.nz-shake {
-  animation: nz-shake-anim 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+.gw-login-card.gw-shake {
+  animation: gw-shake-anim 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
 }
 
-@keyframes nz-shake-anim {
+@keyframes gw-shake-anim {
   10%, 90% { transform: translate3d(-2px, 0, 0); }
   20%, 80% { transform: translate3d(4px, 0, 0); }
   30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
@@ -254,7 +254,7 @@ html.light #nz-login-gate {
 /* ==========================================================================
    Card Header & Custom Emblem
    ========================================================================== */
-.nz-card-header {
+.gw-card-header {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -262,7 +262,7 @@ html.light #nz-login-gate {
   margin-bottom: 30px;
 }
 
-.nz-logo-wrapper {
+.gw-logo-wrapper {
   position: relative;
   width: 68px;
   height: 68px;
@@ -272,40 +272,40 @@ html.light #nz-login-gate {
   justify-content: center;
 }
 
-.nz-logo-pulse {
+.gw-logo-pulse {
   position: absolute;
   inset: -6px;
   border-radius: 22px;
-  background: linear-gradient(135deg, var(--nz-primary-from), var(--nz-primary-mid), var(--nz-primary-to));
+  background: linear-gradient(135deg, var(--gw-primary-from), var(--gw-primary-mid), var(--gw-primary-to));
   opacity: 0.35;
   filter: blur(10px);
-  animation: nz-pulse-glow 3s ease-in-out infinite alternate;
+  animation: gw-pulse-glow 3s ease-in-out infinite alternate;
 }
 
-@keyframes nz-pulse-glow {
+@keyframes gw-pulse-glow {
   0% { transform: scale(0.92); opacity: 0.3; }
   100% { transform: scale(1.08); opacity: 0.65; }
 }
 
-.nz-logo-box {
+.gw-logo-box {
   position: relative;
   width: 64px;
   height: 64px;
   border-radius: 20px;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03));
   border: 1px solid rgba(255, 255, 255, 0.18);
-  box-shadow: 0 10px 25px -5px var(--nz-primary-shadow);
+  box-shadow: 0 10px 25px -5px var(--gw-primary-shadow);
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.nz-logo-box svg {
+.gw-logo-box svg {
   width: 36px;
   height: 36px;
 }
 
-.nz-brand-title {
+.gw-brand-title {
   font-size: 24px;
   font-weight: 800;
   letter-spacing: -0.02em;
@@ -318,15 +318,15 @@ html.light #nz-login-gate {
   gap: 8px;
 }
 
-.nz-brand-subtitle {
+.gw-brand-subtitle {
   font-size: 13px;
-  color: var(--nz-text-sub);
+  color: var(--gw-text-sub);
   margin: 0 0 14px 0;
   font-weight: 500;
   letter-spacing: 0.02em;
 }
 
-.nz-gateway-badge {
+.gw-gateway-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -341,16 +341,16 @@ html.light #nz-login-gate {
   color: #22c55e;
 }
 
-.nz-pulse-dot {
+.gw-pulse-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
   background-color: #22c55e;
   box-shadow: 0 0 8px #22c55e;
-  animation: nz-dot-blink 1.8s infinite;
+  animation: gw-dot-blink 1.8s infinite;
 }
 
-@keyframes nz-dot-blink {
+@keyframes gw-dot-blink {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.85); }
 }
@@ -358,7 +358,7 @@ html.light #nz-login-gate {
 /* ==========================================================================
    Alert Notifications (Error & Success)
    ========================================================================== */
-.nz-alert {
+.gw-alert {
   display: none;
   align-items: center;
   gap: 10px;
@@ -368,31 +368,31 @@ html.light #nz-login-gate {
   font-weight: 500;
   margin-bottom: 20px;
   line-height: 1.4;
-  animation: nz-alert-slide 0.3s ease-out;
+  animation: gw-alert-slide 0.3s ease-out;
 }
 
-@keyframes nz-alert-slide {
+@keyframes gw-alert-slide {
   from { opacity: 0; transform: translateY(-8px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.nz-alert.nz-show {
+.gw-alert.gw-show {
   display: flex;
 }
 
-.nz-alert-error {
-  background: var(--nz-error-bg);
-  border: 1px solid var(--nz-error-border);
-  color: var(--nz-error-text);
+.gw-alert-error {
+  background: var(--gw-error-bg);
+  border: 1px solid var(--gw-error-border);
+  color: var(--gw-error-text);
 }
 
-.nz-alert-success {
-  background: var(--nz-success-bg);
-  border: 1px solid var(--nz-success-border);
-  color: var(--nz-success-text);
+.gw-alert-success {
+  background: var(--gw-success-bg);
+  border: 1px solid var(--gw-success-border);
+  color: var(--gw-success-text);
 }
 
-.nz-alert svg {
+.gw-alert svg {
   flex-shrink: 0;
   width: 18px;
   height: 18px;
@@ -401,60 +401,60 @@ html.light #nz-login-gate {
 /* ==========================================================================
    Form Fields
    ========================================================================== */
-.nz-form {
+.gw-form {
   display: flex;
   flex-direction: column;
   gap: 18px;
 }
 
-.nz-field-group {
+.gw-field-group {
   display: flex;
   flex-direction: column;
   gap: 7px;
 }
 
-.nz-label {
+.gw-label {
   font-size: 13px;
   font-weight: 600;
-  color: var(--nz-text-main);
+  color: var(--gw-text-main);
   letter-spacing: 0.01em;
 }
 
-.nz-input-wrap {
+.gw-input-wrap {
   position: relative;
   display: flex;
   align-items: center;
   border-radius: 14px;
-  background: var(--nz-input-bg);
-  border: 1px solid var(--nz-input-border);
+  background: var(--gw-input-bg);
+  border: 1px solid var(--gw-input-border);
   transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-.nz-input-wrap:focus-within {
-  border-color: var(--nz-input-focus-border);
+.gw-input-wrap:focus-within {
+  border-color: var(--gw-input-focus-border);
   box-shadow: 
-    0 0 0 3px var(--nz-input-focus-glow),
+    0 0 0 3px var(--gw-input-focus-glow),
     inset 0 1px 2px rgba(0, 0, 0, 0.08);
   background: rgba(30, 41, 59, 0.85);
 }
 
-html.light .nz-input-wrap:focus-within {
+html.light .gw-input-wrap:focus-within {
   background: #ffffff;
 }
 
-.nz-input-icon {
+.gw-input-icon {
   position: absolute;
   left: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--nz-text-muted);
+  color: var(--gw-text-muted);
   pointer-events: none;
   transition: color 0.2s;
 }
 
-.nz-input-icon svg {
+.gw-input-icon svg {
   width: 18px;
   height: 18px;
   stroke-width: 2;
@@ -462,11 +462,11 @@ html.light .nz-input-wrap:focus-within {
   fill: none;
 }
 
-.nz-input-wrap:focus-within .nz-input-icon {
-  color: var(--nz-input-focus-border);
+.gw-input-wrap:focus-within .gw-input-icon {
+  color: var(--gw-input-focus-border);
 }
 
-.nz-input {
+.gw-input {
   width: 100%;
   height: 46px;
   padding: 0 42px 0 44px;
@@ -474,16 +474,16 @@ html.light .nz-input-wrap:focus-within {
   border: none;
   outline: none;
   font-size: 14px;
-  color: var(--nz-text-main);
+  color: var(--gw-text-main);
   box-sizing: border-box;
 }
 
-.nz-input::placeholder {
-  color: var(--nz-text-muted);
+.gw-input::placeholder {
+  color: var(--gw-text-muted);
   font-size: 13.5px;
 }
 
-.nz-pwd-toggle {
+.gw-pwd-toggle {
   position: absolute;
   right: 12px;
   display: flex;
@@ -494,18 +494,18 @@ html.light .nz-input-wrap:focus-within {
   border-radius: 8px;
   background: transparent;
   border: none;
-  color: var(--nz-text-muted);
+  color: var(--gw-text-muted);
   cursor: pointer;
   padding: 0;
   transition: color 0.2s, background-color 0.2s;
 }
 
-.nz-pwd-toggle:hover {
-  color: var(--nz-text-main);
+.gw-pwd-toggle:hover {
+  color: var(--gw-text-main);
   background-color: rgba(255, 255, 255, 0.08);
 }
 
-.nz-pwd-toggle svg {
+.gw-pwd-toggle svg {
   width: 18px;
   height: 18px;
   stroke: currentColor;
@@ -516,16 +516,16 @@ html.light .nz-input-wrap:focus-within {
 /* ==========================================================================
    Options Row (Remember Me, Admin shortcut)
    ========================================================================== */
-.nz-form-options {
+.gw-form-options {
   display: flex;
   align-items: center;
   justify-content: space-between;
   font-size: 12.5px;
-  color: var(--nz-text-sub);
+  color: var(--gw-text-sub);
   margin-top: 2px;
 }
 
-.nz-remember-label {
+.gw-remember-label {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -533,26 +533,26 @@ html.light .nz-input-wrap:focus-within {
   user-select: none;
 }
 
-.nz-remember-checkbox {
+.gw-remember-checkbox {
   appearance: none;
   -webkit-appearance: none;
   width: 16px;
   height: 16px;
   border-radius: 5px;
-  background: var(--nz-input-bg);
-  border: 1px solid var(--nz-input-border);
+  background: var(--gw-input-bg);
+  border: 1px solid var(--gw-input-border);
   outline: none;
   cursor: pointer;
   position: relative;
   transition: all 0.2s;
 }
 
-.nz-remember-checkbox:checked {
-  background-color: var(--nz-primary-from);
-  border-color: var(--nz-primary-from);
+.gw-remember-checkbox:checked {
+  background-color: var(--gw-primary-from);
+  border-color: var(--gw-primary-from);
 }
 
-.nz-remember-checkbox:checked::after {
+.gw-remember-checkbox:checked::after {
   content: "";
   position: absolute;
   left: 4.5px;
@@ -564,8 +564,8 @@ html.light .nz-input-wrap:focus-within {
   transform: rotate(45deg);
 }
 
-.nz-admin-link {
-  color: var(--nz-text-sub);
+.gw-admin-link {
+  color: var(--gw-text-sub);
   text-decoration: none;
   transition: color 0.2s;
   display: flex;
@@ -573,14 +573,14 @@ html.light .nz-input-wrap:focus-within {
   gap: 4px;
 }
 
-.nz-admin-link:hover {
-  color: var(--nz-input-focus-border);
+.gw-admin-link:hover {
+  color: var(--gw-input-focus-border);
 }
 
 /* ==========================================================================
    Submit Button
    ========================================================================== */
-.nz-submit-btn {
+.gw-submit-btn {
   position: relative;
   display: flex;
   align-items: center;
@@ -597,14 +597,14 @@ html.light .nz-input-wrap:focus-within {
   letter-spacing: 0.02em;
   color: #ffffff;
   cursor: pointer;
-  background: linear-gradient(135deg, var(--nz-primary-from) 0%, var(--nz-primary-mid) 50%, var(--nz-primary-to) 100%);
+  background: linear-gradient(135deg, var(--gw-primary-from) 0%, var(--gw-primary-mid) 50%, var(--gw-primary-to) 100%);
   background-size: 200% auto;
-  box-shadow: 0 12px 28px -6px var(--nz-primary-shadow);
+  box-shadow: 0 12px 28px -6px var(--gw-primary-shadow);
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
 }
 
-.nz-submit-btn::before {
+.gw-submit-btn::before {
   content: "";
   position: absolute;
   top: 0;
@@ -615,63 +615,63 @@ html.light .nz-input-wrap:focus-within {
   transition: 0.6s;
 }
 
-.nz-submit-btn:hover:not(:disabled)::before {
+.gw-submit-btn:hover:not(:disabled)::before {
   left: 100%;
 }
 
-.nz-submit-btn:hover:not(:disabled) {
+.gw-submit-btn:hover:not(:disabled) {
   transform: translateY(-2px);
   background-position: right center;
-  box-shadow: 0 16px 32px -6px var(--nz-primary-shadow);
+  box-shadow: 0 16px 32px -6px var(--gw-primary-shadow);
 }
 
-.nz-submit-btn:active:not(:disabled) {
+.gw-submit-btn:active:not(:disabled) {
   transform: translateY(0) scale(0.99);
 }
 
-.nz-submit-btn:disabled {
+.gw-submit-btn:disabled {
   opacity: 0.75;
   cursor: not-allowed;
 }
 
 /* Loading Spinner */
-.nz-spinner {
+.gw-spinner {
   display: none;
   width: 18px;
   height: 18px;
   border: 2px solid rgba(255, 255, 255, 0.35);
   border-top-color: #ffffff;
   border-radius: 50%;
-  animation: nz-spin 0.75s linear infinite;
+  animation: gw-spin 0.75s linear infinite;
 }
 
-.nz-submit-btn.nz-loading .nz-spinner {
+.gw-submit-btn.gw-loading .gw-spinner {
   display: inline-block;
 }
 
-.nz-submit-btn.nz-loading .nz-btn-text {
+.gw-submit-btn.gw-loading .gw-btn-text {
   opacity: 0.9;
 }
 
-@keyframes nz-spin {
+@keyframes gw-spin {
   to { transform: rotate(360deg); }
 }
 
 /* ==========================================================================
    Footer
    ========================================================================== */
-.nz-card-footer {
+.gw-card-footer {
   margin-top: 28px;
   text-align: center;
   font-size: 11.5px;
-  color: var(--nz-text-muted);
+  color: var(--gw-text-muted);
   line-height: 1.6;
 }
 
 /* ==========================================================================
    Authenticated Floating User Pill (Top Right on Main Dashboard)
    ========================================================================== */
-#nz-auth-pill {
+#gw-auth-pill {
   position: fixed;
   bottom: 22px;
   left: 22px;
@@ -693,14 +693,14 @@ html.light .nz-input-wrap:focus-within {
   user-select: none;
 }
 
-html.light #nz-auth-pill {
+html.light #gw-auth-pill {
   background: rgba(255, 255, 255, 0.92);
   border-color: rgba(226, 232, 240, 0.95);
   color: #0f172a;
   box-shadow: 0 8px 24px rgba(148, 163, 184, 0.2);
 }
 
-.nz-pill-avatar {
+.gw-pill-avatar {
   width: 26px;
   height: 26px;
   border-radius: 50%;
@@ -713,7 +713,7 @@ html.light #nz-auth-pill {
   font-size: 12px;
 }
 
-.nz-pill-user {
+.gw-pill-user {
   font-weight: 600;
   font-size: 13px;
   max-width: 120px;
@@ -722,14 +722,14 @@ html.light #nz-auth-pill {
   white-space: nowrap;
 }
 
-.nz-pill-actions {
+.gw-pill-actions {
   display: flex;
   align-items: center;
   gap: 6px;
   margin-left: 4px;
 }
 
-.nz-pill-btn {
+.gw-pill-btn {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -745,31 +745,31 @@ html.light #nz-auth-pill {
   transition: all 0.2s;
 }
 
-html.light .nz-pill-btn {
+html.light .gw-pill-btn {
   background: rgba(0, 0, 0, 0.06);
 }
 
-.nz-pill-btn:hover {
+.gw-pill-btn:hover {
   background: rgba(99, 102, 241, 0.25);
   color: #818cf8;
 }
 
-.nz-pill-logout:hover {
+.gw-pill-logout:hover {
   background: rgba(239, 68, 68, 0.2);
   color: #f87171;
 }
 
 /* Mobile Adjustments */
 @media (max-width: 480px) {
-  .nz-login-card {
+  .gw-login-card {
     padding: 30px 22px;
     border-radius: 20px;
   }
-  .nz-top-bar {
+  .gw-top-bar {
     top: 14px;
     right: 14px;
   }
-  #nz-auth-pill {
+  #gw-auth-pill {
     bottom: 16px;
     left: 16px;
     top: auto;
