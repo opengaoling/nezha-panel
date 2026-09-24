@@ -233,7 +233,7 @@ func newHTTPandGRPCMux(httpHandler http.Handler, grpcHandler http.Handler) http.
 			rpc.ServeNAT(w, r, natConfig)
 			return
 		}
-		if r.ProtoMajor == 2 && r.Header.Get("Content-Type") == "application/grpc" &&
+		if r.ProtoMajor == 2 && strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") &&
 			strings.HasPrefix(r.URL.Path, "/"+proto.NezhaService_ServiceDesc.ServiceName) {
 			grpcHandler.ServeHTTP(w, r)
 			return

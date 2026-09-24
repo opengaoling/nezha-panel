@@ -322,6 +322,16 @@ $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_E
         -Last-Modified
     }
 
+    # gRPC 流量匹配并反向代理 (Agent 通信)，必须透传 h2c (Cleartext HTTP/2)
+    @grpc {
+        header Content-Type application/grpc*
+    }
+    reverse_proxy @grpc nezha-dashboard:${INPUT_PORT} {
+        transport http {
+            versions h2c 2
+        }
+    }
+
     # 反向代理至面板容器，自动透传 WebSocket、真实客户端 IP 与 Host
     reverse_proxy nezha-dashboard:${INPUT_PORT} {
         header_up Host {host}
@@ -333,8 +343,11 @@ $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_E
         header_down -Last-Modified
     }
 
-    # 启用智能高效压缩
-    encode zstd gzip
+    # 启用智能高效压缩 (排除 gRPC 二进制数据流)
+    @notGrpc {
+        not header Content-Type application/grpc*
+    }
+    encode @notGrpc zstd gzip
 
     # 日志输出配置
     log {
@@ -361,7 +374,8 @@ services:
     volumes:
       - ./data:/dashboard/data
     networks:
-      - nezha-net
+      nezha-net:
+        ipv4_address: 172.18.0.2
 
   caddy:
     image: ${CADDY_IMAGE}
@@ -371,6 +385,8 @@ services:
       - "80:80"       # ACME 验证与自动跳转 HTTPS
       - "443:443"     # HTTPS (TLS 1.3 / HTTP/2)
       - "443:443/udp" # HTTP/3 (QUIC)
+    extra_hosts:
+      - "nezha-dashboard:172.18.0.2"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data      # 核心证书持久化目录，确保证书自动续期安全保存
@@ -390,6 +406,9 @@ networks:
   nezha-net:
     name: nezha_internal_net
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.18.0.0/16
 EOF
 
     # 3. 写入环境配置备忘 .env
