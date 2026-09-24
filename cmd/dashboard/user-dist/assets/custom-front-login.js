@@ -213,8 +213,11 @@
   function ensureLoginGateDOM() {
     var existing = document.getElementById("nz-login-gate");
     if (existing) {
-      existing.style.display = "";
+      existing.classList.remove("nz-gate-animating");
+      existing.style.display = "flex";
       existing.style.opacity = "1";
+      existing.style.transform = "none";
+      existing.style.transition = "";
       existing.style.pointerEvents = "auto";
       bindGateEvents();
       return existing;

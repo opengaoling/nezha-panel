@@ -5,7 +5,7 @@
   // Enable OS/platform column in card view
   window.FixedTopServerName = true;
 
-  var version = "front-theme-20260923a";
+  var version = "front-theme-20260924a";
   var scripts = [
     "/assets/custom-dashboard-link-fix-20260614.js",
     "/assets/custom-auth-guard.js",

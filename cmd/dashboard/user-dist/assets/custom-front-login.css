@@ -9,6 +9,13 @@ html.nz-force-auth:not(.nz-authenticated) #root {
   display: none !important;
 }
 
+html.nz-force-auth #nz-login-gate {
+  display: flex !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
 html.nz-authenticated #nz-login-gate:not(.nz-gate-animating) {
   display: none !important;
 }

@@ -33,6 +33,19 @@
     }
   }
 
+  function isProtectedApi(input) {
+    try {
+      var raw = requestURL(input);
+      if (!raw) return false;
+      var url = new URL(raw, window.location.href);
+      if (url.origin !== window.location.origin) return false;
+      var p = url.pathname;
+      return p.indexOf("/api/v1/") === 0 && p !== "/api/v1/setting" && p !== "/api/v1/ws/server" && p !== "/api/v1/login";
+    } catch (_e) {
+      return false;
+    }
+  }
+
   function requestMethod(input, init) {
     return String((init && init.method) || (input && input.method) || "GET").toUpperCase();
   }
@@ -73,14 +86,35 @@
   }
 
   function refreshSession() {
-    if (!hasSessionCookie() || !nativeFetch) return;
+    if (!nativeFetch) return;
     lastKeepAliveAt = Date.now();
-    nativeFetch.call(window, "/api/v1/refresh-token", withCSRF({ method: "POST" })).catch(function () {});
+    nativeFetch.call(window, "/api/v1/refresh-token", withCSRF({ method: "POST" }))
+      .then(function (res) {
+        if (res && res.ok) {
+          return res.json().then(function (data) {
+            var tok = data && data.data && data.data.token;
+            if (tok) {
+              try {
+                localStorage.setItem("token", tok);
+                localStorage.setItem("jwt", tok);
+              } catch (_e) {}
+            }
+          });
+        }
+      })
+      .catch(function () {});
   }
 
   function maybeKeepAlive() {
-    if (!hasSessionCookie() || Date.now() - lastKeepAliveAt < keepAliveInterval) return;
-    refreshSession();
+    if (Date.now() - lastKeepAliveAt < keepAliveInterval) return;
+    var hasCookie = hasSessionCookie();
+    var hasToken = false;
+    try {
+      hasToken = !!(localStorage.getItem("token") || localStorage.getItem("jwt"));
+    } catch (_e) {}
+    if (hasCookie || hasToken) {
+      refreshSession();
+    }
   }
 
   function clearAuthStorage() {
@@ -112,7 +146,7 @@
       var parts = window.location.pathname.split("/").filter(Boolean);
       if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
         var first = parts[0].toLowerCase();
-        if (first !== "settings" && first !== "terminal" && first !== "transfer") {
+        if (first !== "settings" && first !== "terminal" && first !== "transfer" && first !== "dashboard") {
           return "/" + parts[0];
         }
       }
@@ -138,21 +172,27 @@
   }
 
   function redirectForAuth() {
-    if (window.location.pathname.indexOf("/dashboard") === -1) return;
-    if (redirected) return;
-    redirected = true;
     clearAuthStorage();
-    var target = loginTarget();
-    if (window.location.pathname + window.location.search !== target) {
-      window.location.replace(target);
+    if (window.location.pathname.indexOf("/dashboard") !== -1) {
+      if (redirected) return;
+      redirected = true;
+      var target = loginTarget();
+      if (window.location.pathname + window.location.search !== target) {
+        window.location.replace(target);
+      }
+      return;
     }
+    try {
+      window.dispatchEvent(new CustomEvent("nz:auth-required"));
+    } catch (_e) {}
   }
 
-  function shouldRedirect(response) {
+  function shouldRedirect(response, input) {
     if (!response) return false;
     if (window.location.pathname.indexOf("/dashboard/login") !== -1) return false;
     if (response.headers && response.headers.get(authHeader) === "1") return true;
-    if (response.status === 401 && hasSessionCookie()) return true;
+    if (response.status === 401) return true;
+    if (response.status === 404 && isProtectedApi(input)) return true;
     return false;
   }
 
@@ -205,7 +245,7 @@
       }
 
       return nativeFetch.call(this, input, init).then(function (response) {
-        if (api && shouldRedirect(response)) {
+        if (api && shouldRedirect(response, input)) {
           redirectForAuth();
           return new Response(JSON.stringify({
             success: false,
@@ -231,17 +271,19 @@
 
     NativeXHR.prototype.open = function (method, url) {
       this.__nezhaApiRequest = sameOriginApi(url);
+      this.__nezhaReqUrl = url;
       return nativeOpen.apply(this, arguments);
     };
 
     NativeXHR.prototype.send = function () {
       if (this.__nezhaApiRequest) {
+        var self = this;
         this.addEventListener("load", function () {
           var authInvalid = "";
           try {
-            authInvalid = this.getResponseHeader(authHeader) || "";
+            authInvalid = self.getResponseHeader(authHeader) || "";
           } catch (_e) {}
-          if (this.status === 401 || authInvalid === "1") {
+          if (self.status === 401 || authInvalid === "1" || (self.status === 404 && isProtectedApi(self.__nezhaReqUrl))) {
             redirectForAuth();
           }
         });

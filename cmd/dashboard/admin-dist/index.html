@@ -6,42 +6,103 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>控制台管理系统 · Console Dashboard</title>
         <script>
-          // Early WAF gate: redirect unauthenticated visitors back to the security gateway
+          // Early WAF gate & White Screen Auto-Recovery Guard
           ;(function(){
+            var RELOAD_KEY = "nz_admin_white_screen_recovery";
+            var MAX_RELOAD_INTERVAL = 8000;
+
+            function canAutoRecover() {
+              try {
+                var last = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
+                return Date.now() - last > MAX_RELOAD_INTERVAL;
+              } catch (_e) {
+                return true;
+              }
+            }
+
+            function markAutoRecover() {
+              try {
+                sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+              } catch (_e) {}
+            }
+
+            // 1. Early WAF gate: redirect unauthenticated visitors back to the security gateway
             try {
-              if (window.location.pathname.indexOf('/dashboard') === -1) return;
-              var hasJwt = document.cookie.indexOf('nz-jwt=') !== -1;
-              var hasToken = false;
-              try { hasToken = !!(localStorage.getItem('token') || localStorage.getItem('jwt')); } catch(_){}
-              if (!hasJwt && !hasToken) {
-                var p = '';
-                var ck = document.cookie.match(/nz-secret-path=([^;]+)/);
-                if (ck && ck[1]) { p = '/' + decodeURIComponent(ck[1].trim()); }
-                else {
-                  var parts = window.location.pathname.split('/').filter(Boolean);
-                  if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0]) && !/^(dashboard|settings|terminal|transfer)$/i.test(parts[0])) {
-                    p = '/' + parts[0];
-                  } else {
-                    try { var s = localStorage.getItem('nz-secret-path'); if (s && /^[a-zA-Z]{8}$/.test(s)) p = '/' + s; } catch(_) {}
+              if (window.location.pathname.indexOf('/dashboard') !== -1) {
+                var hasJwt = document.cookie.indexOf('nz-jwt=') !== -1;
+                var hasToken = false;
+                try { hasToken = !!(localStorage.getItem('token') || localStorage.getItem('jwt')); } catch(_){}
+                if (!hasJwt && !hasToken) {
+                  var p = '';
+                  var ck = document.cookie.match(/nz-secret-path=([^;]+)/);
+                  if (ck && ck[1]) { p = '/' + decodeURIComponent(ck[1].trim()); }
+                  else {
+                    var parts = window.location.pathname.split('/').filter(Boolean);
+                    if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0]) && !/^(dashboard|settings|terminal|transfer)$/i.test(parts[0])) {
+                      p = '/' + parts[0];
+                    } else {
+                      try { var s = localStorage.getItem('nz-secret-path'); if (s && /^[a-zA-Z]{8}$/.test(s)) p = '/' + s; } catch(_) {}
+                    }
                   }
-                }
-                var cleanSearch = '';
-                try {
-                  var sp = new URLSearchParams(window.location.search);
-                  sp.delete('redirect');
-                  var qs = sp.toString();
-                  if (qs) cleanSearch = '?' + qs;
-                } catch(_){}
-                var dest = window.location.pathname + cleanSearch;
-                var target = (p || '') + '/?redirect=' + encodeURIComponent(dest);
-                if (window.location.pathname + window.location.search !== target) {
-                  window.location.replace(target);
+                  var cleanSearch = '';
+                  try {
+                    var sp = new URLSearchParams(window.location.search);
+                    sp.delete('redirect');
+                    var qs = sp.toString();
+                    if (qs) cleanSearch = '?' + qs;
+                  } catch(_){}
+                  var dest = window.location.pathname + cleanSearch;
+                  var target = (p || '') + '/?redirect=' + encodeURIComponent(dest);
+                  if (window.location.pathname + window.location.search !== target) {
+                    window.location.replace(target);
+                    return;
+                  }
                 }
               }
             } catch(_) {}
+
+            // 2. Chunk load error auto-recovery
+            function isChunkError(msg) {
+              if (!msg) return false;
+              return /Failed to fetch dynamically imported module|Loading chunk [0-9]+ failed|Importing a module script failed/i.test(msg);
+            }
+
+            window.addEventListener('error', function(e) {
+              var msg = (e && (e.message || (e.error && e.error.message))) || '';
+              if (isChunkError(msg) && canAutoRecover()) {
+                markAutoRecover();
+                window.location.reload();
+              }
+            });
+
+            window.addEventListener('unhandledrejection', function(e) {
+              var msg = (e && e.reason && (e.reason.message || String(e.reason))) || '';
+              if (isChunkError(msg) && canAutoRecover()) {
+                markAutoRecover();
+                window.location.reload();
+              }
+            });
+
+            // 3. Tab wakeup white screen detection
+            function checkWhiteScreenOnWake() {
+              if (document.hidden) return;
+              window.setTimeout(function() {
+                var root = document.getElementById('root');
+                var isBlank = root && (!root.childNodes || root.childNodes.length === 0 || root.offsetHeight === 0);
+                if (isBlank && canAutoRecover()) {
+                  markAutoRecover();
+                  window.location.reload();
+                }
+              }, 700);
+            }
+
+            document.addEventListener('visibilitychange', function() {
+              if (!document.hidden) checkWhiteScreenOnWake();
+            });
+            window.addEventListener('focus', checkWhiteScreenOnWake);
           })();
         </script>
-        <script type="module" crossorigin src="/dashboard/assets/index-custom-admin.js?v=admin-custom-20260923d"></script>
+        <script type="module" crossorigin src="/dashboard/assets/index-custom-admin.js?v=admin-custom-20260924a"></script>
       <link rel="modulepreload" crossorigin href="/dashboard/assets/rolldown-runtime-Cyuzqnbw.js">
       <link rel="modulepreload" crossorigin href="/dashboard/assets/data-Ct8zKa_c.js">
       <link rel="modulepreload" crossorigin href="/dashboard/assets/react-CcQYHe1I.js">

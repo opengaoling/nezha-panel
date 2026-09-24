@@ -2,7 +2,7 @@
   if (window.__customAdminThemeInstalled) return;
   window.__customAdminThemeInstalled = true;
 
-  var version = "admin-theme-20260923b";
+  var version = "admin-theme-20260924a";
   try {
     var m = document.cookie.match(/nz-secret-path=([a-zA-Z0-9]+)/);
     var prefix = m && m[1] ? "/" + m[1] : "";

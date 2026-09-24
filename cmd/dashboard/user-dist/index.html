@@ -75,11 +75,78 @@
     <meta name="apple-mobile-web-app-title" content="Security Gateway" />
     <link rel="apple-touch-icon" href="/android-chrome-192x192.png" />
 
-    <link rel="stylesheet" crossorigin href="/assets/custom-front-login.css?v=front-login-20260923f">
-    <script src="/assets/custom-front-login.js?v=front-login-20260923f"></script>
-    <script src="/assets/custom-front-theme.js?v=front-theme-20260923a" defer></script>
+    <script>
+      /* Global White Screen Auto-Recovery Guard */
+      ;(function() {
+        var RELOAD_KEY = "nz_user_white_screen_recovery";
+        var MAX_RELOAD_INTERVAL = 8000;
+
+        function canAutoRecover() {
+          try {
+            var last = Number(sessionStorage.getItem(RELOAD_KEY) || 0);
+            return Date.now() - last > MAX_RELOAD_INTERVAL;
+          } catch (_e) {
+            return true;
+          }
+        }
+
+        function markAutoRecover() {
+          try {
+            sessionStorage.setItem(RELOAD_KEY, String(Date.now()));
+          } catch (_e) {}
+        }
+
+        function isChunkError(msg) {
+          if (!msg) return false;
+          return /Failed to fetch dynamically imported module|Loading chunk [0-9]+ failed|Importing a module script failed/i.test(msg);
+        }
+
+        window.addEventListener("error", function(e) {
+          var msg = (e && (e.message || (e.error && e.error.message))) || "";
+          if (isChunkError(msg) && canAutoRecover()) {
+            markAutoRecover();
+            window.location.reload();
+          }
+        });
+
+        window.addEventListener("unhandledrejection", function(e) {
+          var msg = (e && e.reason && (e.reason.message || String(e.reason))) || "";
+          if (isChunkError(msg) && canAutoRecover()) {
+            markAutoRecover();
+            window.location.reload();
+          }
+        });
+
+        function checkWhiteScreenOnWake() {
+          if (document.hidden) return;
+          window.setTimeout(function() {
+            var root = document.getElementById("root");
+            var gate = document.getElementById("nz-login-gate");
+            var isForceAuth = document.documentElement.classList.contains("nz-force-auth");
+            var isAuth = document.documentElement.classList.contains("nz-authenticated");
+            var rootEmpty = root && (!root.childNodes || root.childNodes.length === 0 || root.offsetHeight === 0);
+            var rootHidden = root && window.getComputedStyle(root).display === "none";
+            var gateMissing = !gate || window.getComputedStyle(gate).display === "none" || window.getComputedStyle(gate).opacity === "0";
+
+            if ((rootEmpty || (rootHidden && isForceAuth && !isAuth)) && gateMissing && canAutoRecover()) {
+              markAutoRecover();
+              window.location.reload();
+            }
+          }, 700);
+        }
+
+        document.addEventListener("visibilitychange", function() {
+          if (!document.hidden) checkWhiteScreenOnWake();
+        });
+        window.addEventListener("focus", checkWhiteScreenOnWake);
+      })();
+    </script>
+
+    <link rel="stylesheet" crossorigin href="/assets/custom-front-login.css?v=front-login-20260924a">
+    <script src="/assets/custom-front-login.js?v=front-login-20260924a"></script>
+    <script src="/assets/custom-front-theme.js?v=front-theme-20260924a" defer></script>
     <script src="/assets/custom-front-server-filter.js?v=front-server-filter-20260723d" defer></script>
-    <script type="module" crossorigin src="/assets/index.custom-mobile-flagcss-20260611.js?v=frontfix-20260908-footer"></script>
+    <script type="module" crossorigin src="/assets/index.custom-mobile-flagcss-20260611.js?v=frontfix-20260924a"></script>
     <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime.Cyuzqnbw.js?v=frontfix-20260613c">
     <link rel="modulepreload" crossorigin href="/assets/@floating-ui.Y9xXyXUR.js?v=frontfix-20260613c">
     <link rel="modulepreload" crossorigin href="/assets/react-router.Broep3A8.js?v=frontfix-20260613c">

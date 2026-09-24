@@ -33,6 +33,19 @@
     }
   }
 
+  function isProtectedApi(input) {
+    try {
+      var raw = requestURL(input);
+      if (!raw) return false;
+      var url = new URL(raw, window.location.href);
+      if (url.origin !== window.location.origin) return false;
+      var p = url.pathname;
+      return p.indexOf("/api/v1/") === 0 && p !== "/api/v1/setting" && p !== "/api/v1/ws/server" && p !== "/api/v1/login";
+    } catch (_e) {
+      return false;
+    }
+  }
+
   function requestMethod(input, init) {
     return String((init && init.method) || (input && input.method) || "GET").toUpperCase();
   }
@@ -73,14 +86,35 @@
   }
 
   function refreshSession() {
-    if (!hasSessionCookie() || !nativeFetch) return;
+    if (!nativeFetch) return;
     lastKeepAliveAt = Date.now();
-    nativeFetch.call(window, "/api/v1/refresh-token", withCSRF({ method: "POST" })).catch(function () {});
+    nativeFetch.call(window, "/api/v1/refresh-token", withCSRF({ method: "POST" }))
+      .then(function (res) {
+        if (res && res.ok) {
+          return res.json().then(function (data) {
+            var tok = data && data.data && data.data.token;
+            if (tok) {
+              try {
+                localStorage.setItem("token", tok);
+                localStorage.setItem("jwt", tok);
+              } catch (_e) {}
+            }
+          });
+        }
+      })
+      .catch(function () {});
   }
 
   function maybeKeepAlive() {
-    if (!hasSessionCookie() || Date.now() - lastKeepAliveAt < keepAliveInterval) return;
-    refreshSession();
+    if (Date.now() - lastKeepAliveAt < keepAliveInterval) return;
+    var hasCookie = hasSessionCookie();
+    var hasToken = false;
+    try {
+      hasToken = !!(localStorage.getItem("token") || localStorage.getItem("jwt"));
+    } catch (_e) {}
+    if (hasCookie || hasToken) {
+      refreshSession();
+    }
   }
 
   function clearAuthStorage() {
@@ -100,17 +134,25 @@
 
   function getSecretPrefix() {
     try {
-      var parts = window.location.pathname.split("/").filter(Boolean);
-      if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
-        return "/" + parts[0];
-      }
       var prefix = "nz-secret-path=";
       var cookieParts = document.cookie ? document.cookie.split(";") : [];
       for (var i = 0; i < cookieParts.length; i++) {
         var part = cookieParts[i].trim();
         if (part.indexOf(prefix) === 0) {
-          return "/" + decodeURIComponent(part.substring(prefix.length));
+          var val = decodeURIComponent(part.substring(prefix.length)).trim();
+          if (val) return "/" + val;
         }
+      }
+      var parts = window.location.pathname.split("/").filter(Boolean);
+      if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
+        var first = parts[0].toLowerCase();
+        if (first !== "settings" && first !== "terminal" && first !== "transfer" && first !== "dashboard") {
+          return "/" + parts[0];
+        }
+      }
+      var stored = localStorage.getItem("nz-secret-path");
+      if (stored && /^[a-zA-Z]{8}$/.test(stored)) {
+        return "/" + stored;
       }
     } catch (_e) {}
     return "";
@@ -118,32 +160,76 @@
 
   function loginTarget() {
     var prefix = getSecretPrefix();
-    return window.location.pathname.indexOf("/dashboard") !== -1 ? prefix + "/dashboard/login" : prefix + "/";
+    var cleanSearch = "";
+    try {
+      var sp = new URLSearchParams(window.location.search);
+      sp.delete("redirect");
+      var qs = sp.toString();
+      if (qs) cleanSearch = "?" + qs;
+    } catch (_e) {}
+    var dest = window.location.pathname + cleanSearch;
+    return (prefix || "") + "/?redirect=" + encodeURIComponent(dest);
   }
 
   function redirectForAuth() {
-    if (window.location.pathname.indexOf("/dashboard") === -1) {
-      clearAuthStorage();
-      try {
-        window.dispatchEvent(new CustomEvent("nz:auth-required"));
-      } catch (_e) {}
+    clearAuthStorage();
+    if (window.location.pathname.indexOf("/dashboard") !== -1) {
+      if (redirected) return;
+      redirected = true;
+      var target = loginTarget();
+      if (window.location.pathname + window.location.search !== target) {
+        window.location.replace(target);
+      }
       return;
     }
-    if (redirected) return;
-    redirected = true;
-    clearAuthStorage();
-    var target = loginTarget();
-    if (window.location.pathname + window.location.search !== target) {
-      window.location.replace(target);
+    try {
+      window.dispatchEvent(new CustomEvent("nz:auth-required"));
+    } catch (_e) {}
+  }
+
+  function shouldRedirect(response, input) {
+    if (!response) return false;
+    if (window.location.pathname.indexOf("/dashboard/login") !== -1) return false;
+    if (response.headers && response.headers.get(authHeader) === "1") return true;
+    if (response.status === 401) return true;
+    if (response.status === 404 && isProtectedApi(input)) return true;
+    return false;
+  }
+
+  function handleHomeClick(e) {
+    var a = e.target && (e.target.tagName === "A" ? e.target : e.target.closest("a"));
+    if (!a) return;
+    var href = a.getAttribute("href");
+    var isHome = href === "/" || href === "" || (a.pathname === "/" && a.origin === window.location.origin);
+    if (isHome) {
+      var prefix = getSecretPrefix();
+      if (prefix) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        window.location.href = prefix + "/";
+      }
+    }
+  }
+  document.addEventListener("click", handleHomeClick, true);
+
+  function fixHomeLinks() {
+    var prefix = getSecretPrefix();
+    if (!prefix) return;
+    var links = document.querySelectorAll('a[href="/"], a[href=""]');
+    for (var i = 0; i < links.length; i++) {
+      links[i].setAttribute("href", prefix + "/");
     }
   }
 
-  function shouldRedirect(response) {
-    if (!response) return false;
-    if (response.headers && response.headers.get(authHeader) === "1") return true;
-    if (response.status === 401 && hasSessionCookie()) return true;
-    return false;
-  }
+  try {
+    var detectedPrefix = getSecretPrefix();
+    if (detectedPrefix) {
+      var rawSec = detectedPrefix.replace(/^\//, "");
+      localStorage.setItem("nz-secret-path", rawSec);
+      document.cookie = "nz-secret-path=" + rawSec + "; path=/; Max-Age=2592000; SameSite=Lax";
+    }
+  } catch (_e) {}
 
   var nativeFetch = window.fetch;
   if (typeof nativeFetch === "function") {
@@ -159,7 +245,7 @@
       }
 
       return nativeFetch.call(this, input, init).then(function (response) {
-        if (api && shouldRedirect(response)) {
+        if (api && shouldRedirect(response, input)) {
           redirectForAuth();
           return new Response(JSON.stringify({
             success: false,
@@ -185,17 +271,19 @@
 
     NativeXHR.prototype.open = function (method, url) {
       this.__nezhaApiRequest = sameOriginApi(url);
+      this.__nezhaReqUrl = url;
       return nativeOpen.apply(this, arguments);
     };
 
     NativeXHR.prototype.send = function () {
       if (this.__nezhaApiRequest) {
+        var self = this;
         this.addEventListener("load", function () {
           var authInvalid = "";
           try {
-            authInvalid = this.getResponseHeader(authHeader) || "";
+            authInvalid = self.getResponseHeader(authHeader) || "";
           } catch (_e) {}
-          if (this.status === 401 || authInvalid === "1") {
+          if (self.status === 401 || authInvalid === "1" || (self.status === 404 && isProtectedApi(self.__nezhaReqUrl))) {
             redirectForAuth();
           }
         });
@@ -209,4 +297,16 @@
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) maybeKeepAlive();
   });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", fixHomeLinks, { once: true });
+  } else {
+    fixHomeLinks();
+  }
+  if (typeof MutationObserver !== "undefined") {
+    var observer = new MutationObserver(function () {
+      fixHomeLinks();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+  }
 })();
