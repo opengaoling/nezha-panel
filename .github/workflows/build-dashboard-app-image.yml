@@ -19,21 +19,10 @@ jobs:
     permissions:
       contents: read
       packages: write
-    outputs:
-      image_tag: ${{ steps.meta.outputs.image_tag }}
-      image_ref: ${{ steps.meta.outputs.image_ref }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Set image metadata
-        id: meta
-        run: |
-          IMAGE_TAG=$(echo "${GITHUB_SHA}" | cut -c1-7)
-          IMAGE_REF="ghcr.io/${{ github.repository_owner }}/${{ env.DOCKER_IMAGE_NAME }}:${IMAGE_TAG}"
-          echo "image_tag=${IMAGE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "image_ref=${IMAGE_REF}" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -74,4 +63,85 @@ jobs:
             org.opencontainers.image.description=Customized Nezha dashboard app binary for Argo image builds
           tags: |
             ghcr.io/${{ github.repository_owner }}/${{ env.DOCKER_IMAGE_NAME }}:latest
-            ${{ steps.meta.outputs.image_ref }}
+
+  cleanup:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get active manifests for latest image
+        id: active-manifests
+        run: |
+          MANIFEST_JSON=$(docker manifest inspect ghcr.io/${{ github.repository_owner }}/${{ env.DOCKER_IMAGE_NAME }}:latest || true)
+          if [ -z "$MANIFEST_JSON" ]; then
+            echo "Failed to inspect manifest"
+            exit 1
+          fi
+          DIGESTS=$(echo "$MANIFEST_JSON" | jq -r '.manifests[].digest // empty' | tr '\n' ',' | sed 's/,$//')
+          echo "digests=${DIGESTS}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete old package versions safely
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const packageName = '${{ env.DOCKER_IMAGE_NAME }}';
+            const owner = context.repo.owner;
+            const isUser = context.payload.repository.owner.type === 'User';
+            const rawDigests = '${{ steps.active-manifests.outputs.digests }}';
+            const activeDigests = new Set(rawDigests.split(',').filter(Boolean));
+
+            const endpoint = isUser
+              ? `GET /users/${owner}/packages/container/${packageName}/versions`
+              : `GET /orgs/${owner}/packages/container/${packageName}/versions`;
+
+            const versions = await github.paginate(endpoint, { per_page: 100 });
+            console.log(`Found ${versions.length} total versions in GHCR`);
+
+            const latestVersion = versions.find(v => (v.metadata?.container?.tags || []).includes('latest'));
+            if (!latestVersion) {
+              console.log('No version with tag "latest" found. Skipping cleanup for safety.');
+              return;
+            }
+
+            const keepVersionIds = new Set([latestVersion.id]);
+            for (const v of versions) {
+              if (activeDigests.has(v.name)) {
+                keepVersionIds.add(v.id);
+              }
+            }
+
+            console.log(`Identified ${keepVersionIds.size} versions to keep (latest index + underlying platform manifests):`);
+            for (const v of versions) {
+              if (keepVersionIds.has(v.id)) {
+                console.log(`  [KEEP] id=${v.id} name=${v.name} tags=[${(v.metadata?.container?.tags || []).join(', ')}]`);
+              }
+            }
+
+            let deletedCount = 0;
+            for (const v of versions) {
+              if (keepVersionIds.has(v.id)) {
+                continue;
+              }
+              const tags = (v.metadata?.container?.tags || []).join(', ');
+              console.log(`[DELETE] id=${v.id} name=${v.name} tags=[${tags}]`);
+              const delEndpoint = isUser
+                ? `DELETE /users/${owner}/packages/container/${packageName}/versions/${v.id}`
+                : `DELETE /orgs/${owner}/packages/container/${packageName}/versions/${v.id}`;
+              try {
+                await github.request(delEndpoint);
+                deletedCount++;
+                console.log(`  Successfully deleted version id=${v.id}`);
+              } catch (e) {
+                console.error(`  Failed to delete version id=${v.id}: ${e.message}`);
+              }
+            }
+            console.log(`Cleanup complete. Deleted ${deletedCount} obsolete versions.`);

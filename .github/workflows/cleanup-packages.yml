@@ -2,11 +2,6 @@ name: Cleanup Old Packages
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - master
-    paths:
-      - '.github/workflows/cleanup-packages.yml'
 
 jobs:
   delete-package-versions:
@@ -15,40 +10,77 @@ jobs:
       packages: write
       contents: read
     steps:
-      - name: Delete old tagged package versions safely without breaking multi-arch manifests
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Get active manifests for latest image
+        id: active-manifests
+        run: |
+          MANIFEST_JSON=$(docker manifest inspect ghcr.io/${{ github.repository_owner }}/nezha-panel:latest || true)
+          if [ -z "$MANIFEST_JSON" ]; then
+            echo "Failed to inspect manifest"
+            exit 1
+          fi
+          DIGESTS=$(echo "$MANIFEST_JSON" | jq -r '.manifests[].digest // empty' | tr '\n' ',' | sed 's/,$//')
+          echo "digests=${DIGESTS}" >> "$GITHUB_OUTPUT"
+
+      - name: Delete old package versions safely
         uses: actions/github-script@v7
         with:
           script: |
             const packageName = 'nezha-panel';
             const owner = context.repo.owner;
             const isUser = context.payload.repository.owner.type === 'User';
+            const rawDigests = '${{ steps.active-manifests.outputs.digests }}';
+            const activeDigests = new Set(rawDigests.split(',').filter(Boolean));
+
             const endpoint = isUser
               ? `GET /users/${owner}/packages/container/${packageName}/versions`
               : `GET /orgs/${owner}/packages/container/${packageName}/versions`;
 
-            const { data: versions } = await github.request(endpoint, { per_page: 100 });
-            console.log(`Found ${versions.length} versions`);
+            const versions = await github.paginate(endpoint, { per_page: 100 });
+            console.log(`Found ${versions.length} total versions in GHCR`);
 
+            const latestVersion = versions.find(v => (v.metadata?.container?.tags || []).includes('latest'));
+            if (!latestVersion) {
+              console.log('No version with tag "latest" found. Skipping cleanup for safety.');
+              return;
+            }
+
+            const keepVersionIds = new Set([latestVersion.id]);
             for (const v of versions) {
-              const tags = v.metadata?.container?.tags || [];
-              const isKeep = tags.some(t => t === 'latest' || t.startsWith('latest-'));
-              const isUntagged = tags.length === 0;
+              if (activeDigests.has(v.name)) {
+                keepVersionIds.add(v.id);
+              }
+            }
 
-              // 保留 latest 及 latest-*，并严禁删除多架构 manifest 所引用的未打标子层(untagged layers)
-              if (isKeep || isUntagged) {
-                console.log(`Keeping version id=${v.id} tags=[${tags.join(', ')}]`);
+            console.log(`Identified ${keepVersionIds.size} versions to keep (latest index + underlying platform manifests):`);
+            for (const v of versions) {
+              if (keepVersionIds.has(v.id)) {
+                console.log(`  [KEEP] id=${v.id} name=${v.name} tags=[${(v.metadata?.container?.tags || []).join(', ')}]`);
+              }
+            }
+
+            let deletedCount = 0;
+            for (const v of versions) {
+              if (keepVersionIds.has(v.id)) {
                 continue;
               }
-
-              // 仅删除带有历史 commit/发布 tag 的旧版本
-              console.log(`Deleting old version id=${v.id} tags=[${tags.join(', ')}]`);
+              const tags = (v.metadata?.container?.tags || []).join(', ');
+              console.log(`[DELETE] id=${v.id} name=${v.name} tags=[${tags}]`);
               const delEndpoint = isUser
                 ? `DELETE /users/${owner}/packages/container/${packageName}/versions/${v.id}`
                 : `DELETE /orgs/${owner}/packages/container/${packageName}/versions/${v.id}`;
               try {
                 await github.request(delEndpoint);
-                console.log(`Successfully deleted version id=${v.id}`);
+                deletedCount++;
+                console.log(`  Successfully deleted version id=${v.id}`);
               } catch (e) {
-                console.error(`Failed to delete version id=${v.id}: ${e.message}`);
+                console.error(`  Failed to delete version id=${v.id}: ${e.message}`);
               }
             }
+            console.log(`Cleanup complete. Deleted ${deletedCount} obsolete versions.`);
