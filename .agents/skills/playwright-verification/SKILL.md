@@ -93,3 +93,13 @@ Screenshots for each stage are captured in:
 On ARM64 Linux VM:
 - Browser cache is located at `/home/ubuntu/.cache/ms-playwright/firefox-1543/`.
 - If browser binary is missing, extract `/tmp/firefox.zip` into `/home/ubuntu/.cache/ms-playwright/firefox-1543/` and run `chmod +x /home/ubuntu/.cache/ms-playwright/firefox-1543/firefox/firefox`.
+
+---
+
+## Build & Release Policy (Cloud CI/CD Only)
+
+Once all verification steps pass:
+- **严禁本地构建 (No Local Build)**: Strictly DO NOT run local Docker build or buildx (`docker build` / `docker buildx build`).
+- Commit and push changes directly to `origin/master`.
+- Container images and multi-architecture manifests must be built and published solely via cloud GitHub Actions (`.github/workflows/build-dashboard-app-image.yml`).
+
