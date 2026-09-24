@@ -232,6 +232,33 @@ check_ports() {
     fi
 }
 
+# 自动放行防火墙端口 (80, 443, $INPUT_PORT)
+open_firewall_ports() {
+    log_info "正在配置系统防火墙放行端口 (80, 443, ${INPUT_PORT})..."
+    if command -v iptables >/dev/null 2>&1; then
+        iptables -I INPUT 1 -p tcp --dport 80 -j ACCEPT 2>/dev/null || true
+        iptables -I INPUT 1 -p tcp --dport 443 -j ACCEPT 2>/dev/null || true
+        iptables -I INPUT 1 -p udp --dport 443 -j ACCEPT 2>/dev/null || true
+        iptables -I INPUT 1 -p tcp --dport "$INPUT_PORT" -j ACCEPT 2>/dev/null || true
+        if command -v netfilter-persistent >/dev/null 2>&1; then
+            netfilter-persistent save >/dev/null 2>&1 || true
+        fi
+    fi
+    if command -v ufw >/dev/null 2>&1; then
+        ufw allow 80/tcp >/dev/null 2>&1 || true
+        ufw allow 443/tcp >/dev/null 2>&1 || true
+        ufw allow 443/udp >/dev/null 2>&1 || true
+        ufw allow "${INPUT_PORT}/tcp" >/dev/null 2>&1 || true
+    fi
+    if command -v firewall-cmd >/dev/null 2>&1; then
+        firewall-cmd --permanent --add-port=80/tcp >/dev/null 2>&1 || true
+        firewall-cmd --permanent --add-port=443/tcp >/dev/null 2>&1 || true
+        firewall-cmd --permanent --add-port=443/udp >/dev/null 2>&1 || true
+        firewall-cmd --permanent --add-port="${INPUT_PORT}/tcp" >/dev/null 2>&1 || true
+        firewall-cmd --reload >/dev/null 2>&1 || true
+    fi
+}
+
 # 写入部署配置文件
 write_configs() {
     log_info "正在初始化部署目录: $INPUT_DIR"
@@ -458,6 +485,7 @@ main() {
     check_install_docker
     gather_user_input
     check_ports
+    open_firewall_ports
     write_configs
     start_services
     print_success
