@@ -29,12 +29,12 @@
             // 1. Early WAF gate: redirect unauthenticated visitors back to the security gateway
             try {
               if (window.location.pathname.indexOf('/dashboard') !== -1) {
-                var hasJwt = document.cookie.indexOf('nz-jwt=') !== -1;
+                var hasJwt = document.cookie.indexOf('nz-jwt=') !== -1 || document.cookie.indexOf('gw-jwt=') !== -1;
                 var hasToken = false;
-                try { hasToken = !!(localStorage.getItem('token') || localStorage.getItem('jwt')); } catch(_){}
+                try { hasToken = !!(localStorage.getItem('token') || localStorage.getItem('jwt') || localStorage.getItem('gw-token')); } catch(_){}
                 if (!hasJwt && !hasToken) {
                   var p = '';
-                  var ck = document.cookie.match(/nz-secret-path=([^;]+)/);
+                  var ck = document.cookie.match(/(?:nz-secret-path|gw-secret-path)=([^;]+)/);
                   if (ck && ck[1]) { p = '/' + decodeURIComponent(ck[1].trim()); }
                   else {
                     var parts = window.location.pathname.split('/').filter(Boolean);

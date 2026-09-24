@@ -195,6 +195,7 @@
   function shouldRedirect(response, input) {
     if (!response) return false;
     if (window.location.pathname.indexOf("/dashboard/login") !== -1) return false;
+    if (sameOriginPath(input, "/api/v1/login")) return false;
     if (response.headers && response.headers.get(authHeader) === "1") return true;
     if (response.status === 401) return true;
     if (response.status === 404 && isProtectedApi(input)) return true;

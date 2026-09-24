@@ -9,21 +9,50 @@
 
   if (window.__gwLoginGateInstalled) return;
   window.__gwLoginGateInstalled = true;
-
-  var AUTH_COOKIE_NAME = "___COOKIE___gw-jwt";
-  var CSRF_COOKIE_NAME = "___COOKIE___gw-csrf";
   var THEME_STORAGE_KEY = "vite-ui-theme";
   var USER_STORAGE_KEY = "gw-user-profile";
   var SAVED_USER_KEY = "gw-saved-username";
 
-  // Immediately activate gw-force-auth if unauthenticated to present the security disguise gate
+  // Check if current URL was redirected from a protected page needing auth
+  var hasRedirect = false;
   try {
-    var preCookie = !!(document.cookie && document.cookie.indexOf(AUTH_COOKIE_NAME + "=") !== -1);
+    var searchParams = new URLSearchParams(window.location.search);
+    var redir = searchParams.get("redirect");
+    if (redir && redir.startsWith("/")) {
+      hasRedirect = true;
+    }
+  } catch (_e) {}
+
+  // Helper: Cookie extraction
+  function getCookie(name) {
+    try {
+      var prefix = name + "=";
+      var parts = document.cookie ? document.cookie.split(";") : [];
+      for (var i = 0; i < parts.length; i++) {
+        var part = parts[i].trim();
+        if (part.indexOf(prefix) === 0) {
+          return decodeURIComponent(part.substring(prefix.length));
+        }
+      }
+    } catch (_e) {}
+    return "";
+  }
+
+  function hasAuthCookie() {
+    return !!(getCookie("nz-jwt") || getCookie("gw-jwt"));
+  }
+
+  // Immediately activate gw-force-auth if unauthenticated OR if explicitly redirected here
+  try {
+    var preCookie = hasAuthCookie();
     var preToken = false;
     try {
-      preToken = !!(localStorage.getItem("token") || localStorage.getItem("jwt"));
+      preToken = !!(localStorage.getItem("token") || localStorage.getItem("jwt") || localStorage.getItem("gw-token"));
     } catch (_e) {}
-    if (preCookie || preToken) {
+
+    // If visiting with ?redirect=, visitor was sent here to authenticate.
+    // Must immediately show login gate instead of attempting bypass with stale token.
+    if (!hasRedirect && (preCookie || preToken)) {
       document.documentElement.classList.add("gw-authenticated");
       document.documentElement.classList.remove("gw-force-auth");
       document.title = "系统监控中心 · System Dashboard";
@@ -49,38 +78,23 @@
     }
   } catch (_e) {}
 
-  // Helper: Cookie extraction
-  function getCookie(name) {
-    try {
-      var prefix = name + "=";
-      var parts = document.cookie ? document.cookie.split(";") : [];
-      for (var i = 0; i < parts.length; i++) {
-        var part = parts[i].trim();
-        if (part.indexOf(prefix) === 0) {
-          return decodeURIComponent(part.substring(prefix.length));
-        }
-      }
-    } catch (_e) {}
-    return "";
-  }
-
   // Helper: Secret path prefix detection
   function getSecretPrefix() {
-    var secretCookie = getCookie("___COOKIE___gw-secret-path");
+    var secretCookie = getCookie("nz-secret-path") || getCookie("gw-secret-path");
     if (secretCookie) {
-      try { localStorage.setItem("___COOKIE___gw-secret-path", secretCookie); } catch (_e) {}
+      try { localStorage.setItem("gw-secret-path", secretCookie); } catch (_e) {}
       return "/" + encodeURIComponent(secretCookie);
     }
     var parts = window.location.pathname.split("/").filter(Boolean);
     if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0])) {
       var first = parts[0].toLowerCase();
-      if (first !== "settings" && first !== "terminal" && first !== "transfer") {
-        try { localStorage.setItem("___COOKIE___gw-secret-path", parts[0]); } catch (_e) {}
+      if (first !== "settings" && first !== "terminal" && first !== "transfer" && first !== "dashboard") {
+        try { localStorage.setItem("gw-secret-path", parts[0]); } catch (_e) {}
         return "/" + parts[0];
       }
     }
     try {
-      var stored = localStorage.getItem("___COOKIE___gw-secret-path");
+      var stored = localStorage.getItem("gw-secret-path") || localStorage.getItem("nz-secret-path");
       if (stored && /^[a-zA-Z]{8}$/.test(stored)) {
         return "/" + stored;
       }
@@ -91,17 +105,21 @@
   // Helper: Clear authentication tokens
   function clearAuthSession() {
     try {
-      document.cookie = AUTH_COOKIE_NAME + "=; Max-Age=0; path=/; SameSite=Lax";
-      document.cookie = CSRF_COOKIE_NAME + "=; Max-Age=0; path=/; SameSite=Strict";
+      document.cookie = "nz-jwt=; Max-Age=0; path=/; SameSite=Lax";
+      document.cookie = "gw-jwt=; Max-Age=0; path=/; SameSite=Lax";
+      document.cookie = "nz-csrf=; Max-Age=0; path=/; SameSite=Strict";
+      document.cookie = "gw-csrf=; Max-Age=0; path=/; SameSite=Strict";
     } catch (_e) {}
     try {
       localStorage.removeItem("token");
       localStorage.removeItem("jwt");
+      localStorage.removeItem("gw-token");
       localStorage.removeItem(USER_STORAGE_KEY);
       localStorage.removeItem("nezha-user-profile");
       localStorage.removeItem("nezha-token");
       sessionStorage.removeItem("token");
       sessionStorage.removeItem("jwt");
+      sessionStorage.removeItem("gw-token");
       sessionStorage.removeItem("nezha-token");
     } catch (_e) {}
   }
@@ -221,6 +239,13 @@
       existing.style.pointerEvents = "auto";
       bindGateEvents();
       return existing;
+    }
+
+    if (!document.body && document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", function () {
+        ensureLoginGateDOM();
+      }, { once: true });
+      return null;
     }
 
     var container = document.createElement("div");
@@ -525,16 +550,18 @@
 
   // Verify Session with Backend
   function verifySession() {
-    var hasCookie = !!getCookie(AUTH_COOKIE_NAME);
+    var hasCookie = hasAuthCookie();
     var storageToken = "";
     try {
-      storageToken = localStorage.getItem("token") || localStorage.getItem("jwt") || "";
+      storageToken = localStorage.getItem("token") || localStorage.getItem("jwt") || localStorage.getItem("gw-token") || "";
     } catch (_e) {}
     var hasStorageToken = !!storageToken;
 
-
-    // If no credentials exist anywhere, definitely not logged in -> activate front disguise gate
-    if (!hasCookie && !hasStorageToken) {
+    // If redirected here to authenticate, OR no credentials exist anywhere -> activate front disguise gate
+    if (hasRedirect || (!hasCookie && !hasStorageToken)) {
+      if (hasRedirect) {
+        clearAuthSession();
+      }
       document.documentElement.classList.remove("gw-authenticated");
       document.documentElement.classList.add("gw-force-auth");
       document.title = "安全访问网关 · Security Gateway";
@@ -607,17 +634,20 @@
     document.documentElement.classList.remove("gw-authenticated");
     document.documentElement.classList.add("gw-force-auth");
     ensureLoginGateDOM();
-  });
+  }
 
   function initGate() {
     bindGateEvents();
+    if (hasRedirect || document.documentElement.classList.contains("gw-force-auth")) {
+      ensureLoginGateDOM();
+    }
     try {
-      var hasCookie = !!getCookie(AUTH_COOKIE_NAME);
+      var hasCookie = hasAuthCookie();
       var storageToken = "";
       try {
-        storageToken = localStorage.getItem("token") || localStorage.getItem("jwt") || "";
+        storageToken = localStorage.getItem("token") || localStorage.getItem("jwt") || localStorage.getItem("gw-token") || "";
       } catch (_e) {}
-      if (hasCookie || storageToken) {
+      if (!hasRedirect && (hasCookie || storageToken)) {
         var preSaved = localStorage.getItem(USER_STORAGE_KEY);
         var preParsed = preSaved ? JSON.parse(preSaved) : null;
         mountDashboardUserPill((preParsed && preParsed.username) || "管理员");
