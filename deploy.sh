@@ -348,8 +348,6 @@ EOF
     # 2. 写入 docker-compose.yaml
     log_info "正在生成 docker-compose.yaml 文件..."
     cat > "$INPUT_DIR/docker-compose.yaml" <<EOF
-version: '3.8'
-
 services:
   nezha-dashboard:
     image: ${DOCKER_IMAGE}
