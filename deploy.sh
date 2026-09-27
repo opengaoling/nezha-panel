@@ -353,20 +353,10 @@ $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_E
         }
     }
 
-    # 3. 兜底防护：所有未命中安全凭据的探测请求一律伪装为标准 Nginx 404 HTML
+    # 3. 兜底伪装：未携带安全凭据的探测请求完全呈现 Caddy 原生默认欢迎页与静态服务
     handle {
-        header {
-            Server "nginx"
-            Content-Type "text/html"
-        }
-        respond `<html>
-<head><title>404 Not Found</title></head>
-<body>
-<center><h1>404 Not Found</h1></center>
-<hr><center>nginx</center>
-</body>
-</html>
-` 404
+        root * /usr/share/caddy
+        file_server
     }
 
     # 日志输出配置
