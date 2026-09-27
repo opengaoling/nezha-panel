@@ -2,6 +2,7 @@ package singleton
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/nezhahq/nezha/model"
@@ -35,6 +36,16 @@ func initUser() {
 			u.AgentSecret = utils.MustGenerateRandomString(model.DefaultAgentSecretLength)
 			if err := DB.Save(&u).Error; err != nil {
 				panic(fmt.Errorf("update of user %d failed: %v", u.ID, err))
+			}
+		}
+
+		// 若 config.yaml 中配置了 agent_secret_key，且该用户为管理员，则强制同步保持一致
+		if u.Role == model.RoleAdmin && Conf != nil && Conf.AgentSecretKey != "" && u.AgentSecret != Conf.AgentSecretKey {
+			u.AgentSecret = Conf.AgentSecretKey
+			if err := DB.Model(&u).Update("agent_secret", Conf.AgentSecretKey).Error; err != nil {
+				log.Printf("NEZHA>> sync agent_secret to admin user failed: %v", err)
+			} else {
+				log.Printf("NEZHA>> synced agent_secret_key from config.yaml to admin user %s (id=%d)", u.Username, u.ID)
 			}
 		}
 

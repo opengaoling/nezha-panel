@@ -51,9 +51,14 @@ func initSystem(bus chan<- *model.Service) error {
 		if err != nil {
 			return err
 		}
+		agentSecret := ""
+		if singleton.Conf != nil {
+			agentSecret = singleton.Conf.AgentSecretKey
+		}
 		admin := model.User{
-			Username: "admin",
-			Password: string(hash),
+			Username:    "admin",
+			Password:    string(hash),
+			AgentSecret: agentSecret,
 		}
 		if err := singleton.DB.Create(&admin).Error; err != nil {
 			return err
