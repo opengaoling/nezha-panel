@@ -331,8 +331,10 @@ $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_E
         }
     }
 
-    # 2. 匹配合法面板请求（携带 8 位安全路径、安全 Cookie、安全 Header 或安全 Query）
-    @validPanel `{path}.startsWith('/${INPUT_SECRET}') || {path}.startsWith('/' + '${INPUT_SECRET}'.toLowerCase()) || {http.request.cookie.nz-secret-path} == '${INPUT_SECRET}' || {http.request.cookie.gw-secret-path} == '${INPUT_SECRET}' || {http.request.header.X-Secret-Path} == '${INPUT_SECRET}' || {http.request.uri.query.secret} == '${INPUT_SECRET}'`
+    # 2. 匹配合法面板请求：
+    # (a) URL 显式包含 8 位安全路径（如 /${INPUT_SECRET}/ 或 /${INPUT_SECRET}/dashboard/）
+    # (b) 或携带合法安全凭据且请求的是前端资源或 API（如 /assets/*, /dashboard/assets/*, /api/*）
+    @validPanel `{path}.startsWith('/${INPUT_SECRET}') || {path}.startsWith('/' + '${INPUT_SECRET}'.toLowerCase()) || (({http.request.cookie.nz-secret-path} == '${INPUT_SECRET}' || {http.request.cookie.gw-secret-path} == '${INPUT_SECRET}' || {http.request.header.X-Secret-Path} == '${INPUT_SECRET}' || {http.request.uri.query.secret} == '${INPUT_SECRET}') && ({path}.startsWith('/assets/') || {path}.startsWith('/dashboard/assets/') || {path}.startsWith('/api/') || {path} == '/favicon.ico' || {path} == '/manifest.json' || {path} == '/robots.txt'))`
     handle @validPanel {
         header {
             Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
@@ -578,7 +580,7 @@ show_menu() {
             5) show_info; press_any_key ;;
             6) $CMD logs -f nezha-dashboard ;;
             7) echo "查看 Caddy 日志 (Ctrl+C 退出)..."; $CMD logs -f caddy ;;
-            8) echo "正在拉取最新镜像并更新..."; $CMD pull && $CMD up -d --remove-orphans; press_any_key ;;
+            8) echo "正在拉取最新镜像并更新..."; $CMD pull && $CMD up -d --force-recreate --remove-orphans; press_any_key ;;
             9) cleanup_menu ;;
             0|q|Q) echo "已退出。"; exit 0 ;;
             *) echo "无效输入，请重新选择。"; sleep 1 ;;
@@ -613,7 +615,7 @@ case "$1" in
     update)
         echo "正在拉取最新镜像并平滑更新..."
         $CMD pull
-        $CMD up -d --remove-orphans
+        $CMD up -d --force-recreate --remove-orphans
         echo "更新完毕！"
         ;;
     info)
@@ -640,10 +642,10 @@ EOF
 
 # 启动服务
 start_services() {
-    log_info "正在拉取容器镜像并启动服务..."
+    log_info "正在拉取最新容器镜像并启动服务..."
     cd "$INPUT_DIR"
     $COMPOSE_CMD pull || true
-    $COMPOSE_CMD up -d
+    $COMPOSE_CMD up -d --force-recreate --remove-orphans
 
     log_info "等待服务启动与初始化..."
     sleep 5
