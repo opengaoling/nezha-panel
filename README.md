@@ -11,7 +11,7 @@
 
 - 🎨 **内置现代科技风磨砂玻璃主题**：无需独立部署前端或子模块依赖，前端静态资源（`user-dist` 与 `admin-dist`）直接内嵌于面板二进制及服务中，高质感玻璃拟态 UI，预渲染技术杜绝白屏与 FOUC 闪烁。
 - ⚡ **长时间停留/唤醒防白屏自愈机制**：前端内置全局异常与动态 Chunk 加载失败拦截、Tab 切换/休眠唤醒探测。如果页面长时间空闲造成 React `#root` 异常变白，将毫秒级自动触发无感自愈恢复，免去手动 Ctrl+F5 刷新。
-- 🔒 **全前置 WAF 防探测加固（Anti-Probe WAF）**：未通过 8 位随机安全路径直接探测任何内部路径（包括 `/dashboard`、`/dashboard/*`、`/api/v1/*`、`/mcp`、`/swagger`、`/debug/pprof` 等），服务端一律返回纯文本 `404 page not found`，彻底杜绝指纹泄露与扫描器探测。
+- 🔒 **全前置 WAF 防探测加固（Anti-Probe WAF）**：未通过 8 位随机安全路径直接探测任何内部路径（包括 `/dashboard`、`/dashboard/*`、`/api/v1/*`、`/mcp`、`/swagger`、`/debug/pprof` 等），服务端一律返回标准 Nginx 默认 404 页面及 `Server: nginx` 标头伪装，彻底杜绝指纹泄露与扫描器探测。
 - 🔑 **8 位随机英文字母隐匿路径（`SecretPath`）**：
   - 全站隐匿在 8 位随机英文字母前缀下（例如：`domain.com/mKovrigH/dashboard/`、`domain.com/mKovrigH/`）。
   - **自动生成与持久化**：首次启动若未设置，系统自动通过高强度安全随机源生成 8 位英文字母并保存至 `config.yaml`。
@@ -328,7 +328,7 @@ curl -L https://raw.githubusercontent.com/nezhahq/scripts/main/agent/install.sh 
 ## 🛡️ 防探测安全机制说明
 
 1. **直接探测防护**：
-   - 任何未通过 8 位秘密路径或无安全 Cookie 的客户端，访问 `domain.com/`、`domain.com/dashboard`、`domain.com/api/v1/setting` 等，均直接返回 `404 page not found`，对全网扫描器（如 Shodan、Censys、FOFA）完全隐匿。
+   - 任何未通过 8 位秘密路径或无安全 Cookie 的客户端，访问 `domain.com/`、`domain.com/dashboard`、`domain.com/api/v1/setting` 等，均直接返回标准 Nginx 404 页面及 `Server: nginx` 响应头伪装，对全网扫描器（如 Shodan、Censys、FOFA）完全隐匿。
 2. **凭据隔离**：
    - 必须通过 `domain.com/<8位字母>/` 或 `domain.com/<8位字母>/Dashboard` 访问。
    - 访问一次有效秘密路径后，浏览器将自动保存安全 Cookie，后续正常使用无需反复输入随机前缀。

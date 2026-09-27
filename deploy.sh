@@ -313,41 +313,61 @@ write_configs() {
 ${INPUT_DOMAIN} {
 $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_EMAIL}" )
 
-    # 全站禁用缓存，杜绝静态资源及接口缓存导致的白屏与渲染异常
-    header {
-        Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
-        Pragma "no-cache"
-        Expires "0"
-        -ETag
-        -Last-Modified
-    }
-
-    # gRPC 流量匹配并反向代理 (Agent 通信)，必须透传 h2c (Cleartext HTTP/2)
-    @grpc {
-        header Content-Type application/grpc*
-    }
-    reverse_proxy @grpc nezha-dashboard:${INPUT_PORT} {
-        transport http {
-            versions h2c 2
-        }
-    }
-
-    # 反向代理至面板容器，自动透传 WebSocket、真实客户端 IP 与 Host
-    reverse_proxy nezha-dashboard:${INPUT_PORT} {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-        header_down Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
-        header_down Pragma "no-cache"
-        header_down Expires "0"
-        header_down -ETag
-        header_down -Last-Modified
-    }
-
     # 启用智能高效压缩 (排除 gRPC 二进制数据流)
     @notGrpc {
         not header Content-Type application/grpc*
     }
     encode @notGrpc zstd gzip
+
+    # 1. gRPC 流量匹配并反向代理 (Agent 通信)，必须透传 h2c (Cleartext HTTP/2)
+    @grpc {
+        header Content-Type application/grpc*
+    }
+    handle @grpc {
+        reverse_proxy nezha-dashboard:${INPUT_PORT} {
+            transport http {
+                versions h2c 2
+            }
+        }
+    }
+
+    # 2. 匹配合法面板请求（携带 8 位安全路径、安全 Cookie、安全 Header 或安全 Query）
+    @validPanel `{path}.startsWith('/${INPUT_SECRET}') || {path}.startsWith('/' + '${INPUT_SECRET}'.toLowerCase()) || {http.request.cookie.nz-secret-path} == '${INPUT_SECRET}' || {http.request.cookie.gw-secret-path} == '${INPUT_SECRET}' || {http.request.header.X-Secret-Path} == '${INPUT_SECRET}' || {http.request.uri.query.secret} == '${INPUT_SECRET}'`
+    handle @validPanel {
+        header {
+            Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+            Pragma "no-cache"
+            Expires "0"
+            -ETag
+            -Last-Modified
+        }
+
+        reverse_proxy nezha-dashboard:${INPUT_PORT} {
+            header_up Host {host}
+            header_up X-Real-IP {remote_host}
+            header_down Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+            header_down Pragma "no-cache"
+            header_down Expires "0"
+            header_down -ETag
+            header_down -Last-Modified
+        }
+    }
+
+    # 3. 兜底防护：所有未命中安全凭据的探测请求一律伪装为标准 Nginx 404 HTML
+    handle {
+        header {
+            Server "nginx"
+            Content-Type "text/html"
+        }
+        respond `<html>
+<head><title>404 Not Found</title></head>
+<body>
+<center><h1>404 Not Found</h1></center>
+<hr><center>nginx</center>
+</body>
+</html>
+` 404
+    }
 
     # 日志输出配置
     log {
