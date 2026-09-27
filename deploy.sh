@@ -303,6 +303,9 @@ write_configs() {
     mkdir -p "$INPUT_DIR" "$INPUT_DIR/data"
     cd "$INPUT_DIR"
 
+    local secret_lower
+    secret_lower="$(echo "$INPUT_SECRET" | tr '[:upper:]' '[:lower:]')"
+
     # 1. 写入 Caddyfile
     log_info "正在生成 Caddyfile 自动化 HTTPS 配置文件..."
     cat > "$INPUT_DIR/Caddyfile" <<EOF
@@ -335,7 +338,7 @@ $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_E
     # 2. 匹配合法面板请求：
     # (a) URL 显式包含 8 位安全路径（如 /${INPUT_SECRET}/ 或 /${INPUT_SECRET}/dashboard/）
     # (b) 或携带合法安全凭据且请求的是前端资源或 API（如 /assets/*, /dashboard/assets/*, /api/*）
-    @validPanel \`{path}.startsWith('/${INPUT_SECRET}') || {path}.startsWith('/' + '${INPUT_SECRET}'.toLowerCase()) || (({http.request.cookie.nz-secret-path} == '${INPUT_SECRET}' || {http.request.cookie.gw-secret-path} == '${INPUT_SECRET}' || {http.request.header.X-Secret-Path} == '${INPUT_SECRET}' || {http.request.uri.query.secret} == '${INPUT_SECRET}') && ({path}.startsWith('/assets/') || {path}.startsWith('/dashboard/assets/') || {path}.startsWith('/api/') || {path} == '/favicon.ico' || {path} == '/manifest.json' || {path} == '/robots.txt'))\`
+    @validPanel \`{path}.startsWith('/${INPUT_SECRET}') || {path}.startsWith('/${secret_lower}') || (({http.request.cookie.nz-secret-path} == '${INPUT_SECRET}' || {http.request.cookie.gw-secret-path} == '${INPUT_SECRET}' || {http.request.header.X-Secret-Path} == '${INPUT_SECRET}' || {http.request.uri.query.secret} == '${INPUT_SECRET}') && ({path}.startsWith('/assets/') || {path}.startsWith('/dashboard/assets/') || {path}.startsWith('/api/') || {path} == '/favicon.ico' || {path} == '/manifest.json' || {path} == '/robots.txt'))\`
     handle @validPanel {
         header {
             Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
