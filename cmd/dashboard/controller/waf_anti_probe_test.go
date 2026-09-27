@@ -377,6 +377,14 @@ func TestSecretPathProtectionAndRouting(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, wDashWithCookie.Code)
 	assert.Contains(t, wDashWithCookie.Body.String(), "404 page not found")
 
+	// 4e. GET /dashboard/terminal/123 with cookie -> 301 redirect to /{secret}/dashboard/terminal/123
+	reqTermWithCookie := httptest.NewRequest("GET", "/dashboard/terminal/123", nil)
+	reqTermWithCookie.AddCookie(&http.Cookie{Name: SecretPathCookieName, Value: secret})
+	wTermWithCookie := httptest.NewRecorder()
+	handler.ServeHTTP(wTermWithCookie, reqTermWithCookie)
+	assert.Equal(t, http.StatusMovedPermanently, wTermWithCookie.Code)
+	assert.Equal(t, "/"+secret+"/dashboard/terminal/123", wTermWithCookie.Header().Get("Location"))
+
 	// 5. Access with PAT:
 	reqPAT := httptest.NewRequest("GET", "/api/v1/server", nil)
 	reqPAT.Header.Set("Authorization", "Bearer "+patPlaintext)

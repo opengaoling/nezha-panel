@@ -9,8 +9,39 @@
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>控制台管理系统 · Console Dashboard</title>
         <script>
-          // Early WAF gate & White Screen Auto-Recovery Guard
+          // Early WAF gate & White Screen Auto-Recovery Guard & Secret Path Guard
           ;(function(){
+            function getSecretPrefix() {
+              try {
+                var ck = document.cookie.match(/(?:nz-secret-path|gw-secret-path)=([^;]+)/);
+                if (ck && ck[1]) { return '/' + decodeURIComponent(ck[1].trim()); }
+                var parts = window.location.pathname.split('/').filter(Boolean);
+                if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0]) && !/^(dashboard|settings|terminal|transfer)$/i.test(parts[0])) {
+                  return '/' + parts[0];
+                }
+                var s = localStorage.getItem('gw-secret-path') || localStorage.getItem('nz-secret-path');
+                if (s && /^[a-zA-Z]{8}$/.test(s)) return '/' + s;
+              } catch (_) {}
+              return '';
+            }
+            window.__getSecretPrefix = getSecretPrefix;
+
+            // Intercept window.open to ensure secret prefix is prepended to dashboard/terminal popups
+            var _origOpen = window.open;
+            if (typeof _origOpen === 'function') {
+              window.open = function(url, target, features) {
+                if (typeof url === 'string') {
+                  var p = getSecretPrefix();
+                  if (p && url.indexOf(p) !== 0) {
+                    if (url.indexOf('/dashboard') === 0 || url.indexOf('/terminal') === 0) {
+                      url = p + url;
+                    }
+                  }
+                }
+                return _origOpen.call(this, url, target, features);
+              };
+            }
+
             var RELOAD_KEY = "gw_admin_white_screen_recovery";
             var MAX_RELOAD_INTERVAL = 8000;
 
@@ -36,20 +67,7 @@
                 var hasToken = false;
                 try { hasToken = !!(localStorage.getItem('token') || localStorage.getItem('jwt') || localStorage.getItem('gw-token')); } catch(_){}
                 if (!hasJwt && !hasToken) {
-                  var p = '';
-                  var ck = document.cookie.match(/(?:nz-secret-path|gw-secret-path)=([^;]+)/);
-                  if (ck && ck[1]) { p = '/' + decodeURIComponent(ck[1].trim()); }
-                  else {
-                    var parts = window.location.pathname.split('/').filter(Boolean);
-                    if (parts.length > 0 && /^[a-zA-Z]{8}$/.test(parts[0]) && !/^(dashboard|settings|terminal|transfer)$/i.test(parts[0])) {
-                      p = '/' + parts[0];
-                    } else {
-                      try {
-                        var s = localStorage.getItem('gw-secret-path') || localStorage.getItem('nz-secret-path');
-                        if (s && /^[a-zA-Z]{8}$/.test(s)) p = '/' + s;
-                      } catch(_) {}
-                    }
-                  }
+                  var p = getSecretPrefix();
                   var target = (p || '') + '/dashboard/login';
                   if (window.location.pathname !== target) {
                     window.location.replace(target);

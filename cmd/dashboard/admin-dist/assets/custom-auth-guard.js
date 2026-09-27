@@ -221,6 +221,40 @@
     }
   }
 
+  window.__getSecretPrefix = getSecretPrefix;
+  window.getSecretPrefix = getSecretPrefix;
+
+  var nativeWindowOpen = window.open;
+  if (typeof nativeWindowOpen === "function") {
+    window.open = function (url, target, features) {
+      if (typeof url === "string") {
+        var prefix = getSecretPrefix();
+        if (prefix && url.indexOf(prefix) !== 0) {
+          if (url.indexOf("/dashboard") === 0 || url.indexOf("/terminal") === 0) {
+            url = prefix + url;
+          }
+        }
+      }
+      return nativeWindowOpen.call(this, url, target, features);
+    };
+  }
+
+  function handleLinkPrefix(e) {
+    var a = e.target && (e.target.tagName === "A" ? e.target : e.target.closest("a"));
+    if (!a) return;
+    var href = a.getAttribute("href");
+    if (!href) return;
+    var prefix = getSecretPrefix();
+    if (prefix && href.indexOf(prefix) !== 0) {
+      if (href.indexOf("/dashboard") === 0 || href.indexOf("/terminal") === 0) {
+        a.setAttribute("href", prefix + href);
+      }
+    }
+  }
+  document.addEventListener("click", handleLinkPrefix, true);
+  document.addEventListener("auxclick", handleLinkPrefix, true);
+  document.addEventListener("contextmenu", handleLinkPrefix, true);
+
   try {
     var detectedPrefix = getSecretPrefix();
     if (detectedPrefix) {
@@ -228,6 +262,8 @@
       localStorage.setItem("gw-secret-path", rawSec);
       localStorage.setItem("nz-secret-path", rawSec);
       document.cookie = "nz-secret-path=" + rawSec + "; path=/; Max-Age=2592000; SameSite=Lax";
+      window.__gwHomeHref = detectedPrefix + "/";
+      window.__nzHomeHref = window.__gwHomeHref;
     }
   } catch (_e) {}
 

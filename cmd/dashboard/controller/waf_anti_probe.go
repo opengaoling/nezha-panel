@@ -129,6 +129,17 @@ func secretPathHandler(next http.Handler) http.Handler {
 			return
 		}
 
+		// If client is authenticated via secret cookie/header and accesses terminal/dashboard subpage,
+		// redirect to the secret-prefixed canonical URL so the UI renders seamlessly.
+		if (hasCookieSecret || hasHeaderSecret) && (strings.HasPrefix(reqPath, "/dashboard/terminal") || strings.HasPrefix(reqPath, "/terminal")) {
+			target := secretPrefix + reqPath
+			if r.URL.RawQuery != "" {
+				target += "?" + r.URL.RawQuery
+			}
+			http.Redirect(w, r, target, http.StatusMovedPermanently)
+			return
+		}
+
 		// All other requests without secret in URL (e.g. naked port "/", "/dashboard", "/login",
 		// or any unauthenticated probes) must promptly return 404!
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
