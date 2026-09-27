@@ -20,7 +20,7 @@ SCRIPT_VERSION="v2.5.0"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
-CADDY_IMAGE="caddy:2-alpine"
+CADDY_IMAGE="caddy:2.8.4-alpine"
 
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_ok()   { echo -e "${GREEN}[ OK ]${NC} $1"; }
