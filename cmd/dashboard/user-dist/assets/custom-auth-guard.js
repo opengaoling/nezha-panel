@@ -164,18 +164,11 @@
 
   function loginTarget() {
     var prefix = getSecretPrefix();
-    var cleanSearch = "";
-    try {
-      var sp = new URLSearchParams(window.location.search);
-      sp.delete("redirect");
-      var qs = sp.toString();
-      if (qs) cleanSearch = "?" + qs;
-    } catch (_e) {}
-    var dest = window.location.pathname + cleanSearch;
-    return (prefix || "") + "/?redirect=" + encodeURIComponent(dest);
+    return (prefix || "") + "/dashboard/login";
   }
 
   function redirectForAuth() {
+    if (window.location.pathname.indexOf("/dashboard/login") !== -1) return;
     clearAuthStorage();
     if (window.location.pathname.indexOf("/dashboard") !== -1) {
       if (redirected) return;

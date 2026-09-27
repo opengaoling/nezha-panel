@@ -29,9 +29,9 @@
               } catch (_e) {}
             }
 
-            // 1. Early WAF gate: redirect unauthenticated visitors back to the security gateway
+            // 1. Early WAF gate: redirect unauthenticated visitors to dashboard login
             try {
-              if (window.location.pathname.indexOf('/dashboard') !== -1) {
+              if (window.location.pathname.indexOf('/dashboard') !== -1 && window.location.pathname.indexOf('/dashboard/login') === -1) {
                 var hasJwt = document.cookie.indexOf('nz-jwt=') !== -1 || document.cookie.indexOf('gw-jwt=') !== -1;
                 var hasToken = false;
                 try { hasToken = !!(localStorage.getItem('token') || localStorage.getItem('jwt') || localStorage.getItem('gw-token')); } catch(_){}
@@ -50,16 +50,8 @@
                       } catch(_) {}
                     }
                   }
-                  var cleanSearch = '';
-                  try {
-                    var sp = new URLSearchParams(window.location.search);
-                    sp.delete('redirect');
-                    var qs = sp.toString();
-                    if (qs) cleanSearch = '?' + qs;
-                  } catch(_){}
-                  var dest = window.location.pathname + cleanSearch;
-                  var target = (p || '') + '/?redirect=' + encodeURIComponent(dest);
-                  if (window.location.pathname + window.location.search !== target) {
+                  var target = (p || '') + '/dashboard/login';
+                  if (window.location.pathname !== target) {
                     window.location.replace(target);
                     return;
                   }
