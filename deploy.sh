@@ -15,7 +15,8 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-# 全局默认参数
+# 全局默认参数与版本号
+SCRIPT_VERSION="v2.5.0"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -30,7 +31,7 @@ print_banner() {
     clear 2>/dev/null || true
     echo -e "${CYAN}${BOLD}"
     echo "============================================================================"
-    echo "       🚀 哪吒监控定制安全增强版 · 一键部署脚本 (内置 Caddy 自动证书)       "
+    echo "       🚀 哪吒监控定制安全增强版 · 一键部署脚本 (${SCRIPT_VERSION})       "
     echo "         基于 Nezha Monitoring · 全前置 WAF 防探测 · 8位安全路径隐匿         "
     echo "          Caddy 自动化 HTTPS: 自动申请 Let's Encrypt / ZeroSSL 证书并自动续期   "
     echo "============================================================================"
@@ -436,6 +437,7 @@ EOF
     cat > "$INPUT_DIR/nezha.sh" << 'EOF'
 #!/usr/bin/env bash
 # Nezha Dashboard & Caddy Management Tool
+VERSION="v2.5.0"
 
 # 解析实际路径以防通过软链接执行
 SOURCE="${BASH_SOURCE[0]}"
@@ -557,7 +559,7 @@ show_menu() {
     while true; do
         clear 2>/dev/null || true
         echo "============================================================================"
-        echo "       🚀 哪吒监控定制安全增强版 · 管理控制台 (内置 Caddy 自动证书)       "
+        echo "       🚀 哪吒监控定制安全增强版 · 管理控制台 (${VERSION})       "
         echo "============================================================================"
         echo "  1. 查看服务运行状态 (Status)"
         echo "  2. 启动面板与 Caddy 服务 (Start)"
@@ -627,11 +629,14 @@ case "$1" in
     uninstall)
         clean_uninstall_all
         ;;
+    version|-v|--version)
+        echo "哪吒监控管理脚本版本: ${VERSION}"
+        ;;
     menu|"")
         show_menu
         ;;
     *)
-        echo "用法: $0 {menu|status|start|stop|restart|logs|logs-caddy|update|info|clean|uninstall}"
+        echo "用法: $0 {menu|status|start|stop|restart|logs|logs-caddy|update|info|clean|uninstall|version}"
         exit 1
         ;;
 esac
@@ -1018,6 +1023,7 @@ parse_args() {
             info) ACTION="info"; shift ;;
             uninstall) ACTION="uninstall"; shift ;;
             menu) ACTION="menu"; shift ;;
+            -v|--version|version) echo "哪吒监控一键部署脚本版本: ${SCRIPT_VERSION}"; exit 0 ;;
             -h|--help) show_usage; exit 0 ;;
             *) shift ;;
         esac
