@@ -42,9 +42,14 @@
     return path === "/dashboard" || path.endsWith("/dashboard");
   }
 
+  function apiUrl(endpoint) {
+    var prefix = window.__getSecretPrefix ? window.__getSecretPrefix() : "";
+    return (prefix || "") + endpoint;
+  }
+
   function requestGroups() {
     if (state.groups) return Promise.resolve(state.groups);
-    return fetch("/api/v1/server-group", {
+    return fetch(apiUrl("/api/v1/server-group"), {
       credentials: "same-origin",
       headers: { Accept: "application/json" }
     })
@@ -77,8 +82,11 @@
   }
 
   function isOnline(server) {
+    if (!server) return false;
     if (typeof server.online === "boolean") return server.online;
-    if (!server.last_active) return false;
+    if (server.online === "true") return true;
+    if (server.online === "false") return false;
+    if (!server.last_active || String(server.last_active).startsWith("0001")) return false;
     var lastActive = new Date(server.last_active).getTime();
     if (!Number.isFinite(lastActive) || lastActive <= 0) return false;
     return Date.now() - lastActive < 35000;
@@ -97,7 +105,7 @@
     if (state.serverStatusPromise) return state.serverStatusPromise;
 
     state.serverStatusRequestedAt = now;
-    state.serverStatusPromise = fetch("/api/v1/server", {
+    state.serverStatusPromise = fetch(apiUrl("/api/v1/server"), {
       credentials: "same-origin",
       headers: { Accept: "application/json" }
     })

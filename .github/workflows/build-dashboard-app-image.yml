@@ -2,6 +2,9 @@ name: build-dashboard-app-image
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - master
 
 env:
   DOCKER_IMAGE_NAME: nezha-panel

@@ -233,17 +233,14 @@ type serverJSON Server
 
 type serverWithOwner struct {
 	*serverJSON
-	Owner *ServerOwnerInfo `json:"owner,omitempty"`
+	Owner  *ServerOwnerInfo `json:"owner,omitempty"`
+	Online bool             `json:"online"`
 }
 
-// MarshalJSON projects Server.UserID into a structured owner field on the
-// wire. Server.UserID itself stays `json:"-"` (set on Common) so callers
-// that do not need owner info pay nothing and members do not accidentally
-// receive raw uid integers. The lookup function is consulted only when
-// installed; if absent we still emit a minimal {id} record so clients can
-// at least distinguish ownership, except for uid=0 which is the legacy
-// global-secret pseudo-owner and is best surfaced as such by the caller's
-// translation table on the frontend.
+// MarshalJSON projects Server.UserID into a structured owner field and exposes
+// the computed online status on the wire. Server.UserID itself stays `json:"-"`
+// (set on Common) so callers that do not need owner info pay nothing and members
+// do not accidentally receive raw uid integers.
 func (s *Server) MarshalJSON() ([]byte, error) {
 	owner := &ServerOwnerInfo{ID: s.GetUserID()}
 	if ServerOwnerLookup != nil {
@@ -251,9 +248,12 @@ func (s *Server) MarshalJSON() ([]byte, error) {
 			owner.Username = info.Username
 		}
 	}
+	now := time.Now()
+	isOnline := s.GetTaskStream() != nil || (!s.LastActive.IsZero() && now.Sub(s.LastActive) < 35*time.Second)
 	return json.Marshal(serverWithOwner{
 		serverJSON: (*serverJSON)(s),
 		Owner:      owner,
+		Online:     isOnline,
 	})
 }
 

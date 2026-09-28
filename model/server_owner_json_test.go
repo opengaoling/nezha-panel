@@ -127,3 +127,38 @@ func TestServerMarshalJSONEmitsOwnerWithoutLookup(t *testing.T) {
 		t.Fatalf("expected bare owner record {id:17}, got %+v", got.Owner)
 	}
 }
+
+func TestServerMarshalJSONOnlineField(t *testing.T) {
+	// 1. Offline server: zero LastActive and no taskStream
+	sOffline := &Server{Common: Common{ID: 1}, Name: "offline-srv"}
+	raw, err := json.Marshal(sOffline)
+	if err != nil {
+		t.Fatalf("marshal offline: %v", err)
+	}
+	var gotOffline struct {
+		Online bool `json:"online"`
+	}
+	if err := json.Unmarshal(raw, &gotOffline); err != nil {
+		t.Fatalf("unmarshal offline: %v", err)
+	}
+	if gotOffline.Online {
+		t.Fatalf("expected server to be offline, got online=true")
+	}
+
+	// 2. Online server via recent LastActive
+	sOnline := &Server{Common: Common{ID: 2}, Name: "online-srv", LastActive: time.Now()}
+	rawOnline, err := json.Marshal(sOnline)
+	if err != nil {
+		t.Fatalf("marshal online: %v", err)
+	}
+	var gotOnline struct {
+		Online bool `json:"online"`
+	}
+	if err := json.Unmarshal(rawOnline, &gotOnline); err != nil {
+		t.Fatalf("unmarshal online: %v", err)
+	}
+	if !gotOnline.Online {
+		t.Fatalf("expected server to be online, got online=false")
+	}
+}
+
