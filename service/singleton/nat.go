@@ -92,6 +92,7 @@ func NewNATClass() *NATClass {
 	idToDomain := make(map[uint64]string, len(sortedList))
 	for _, profile := range sortedList {
 		list[profile.Domain] = profile
+		list[strings.ToLower(profile.Domain)] = profile
 		idToDomain[profile.ID] = profile.Domain
 	}
 
@@ -109,9 +110,11 @@ func (c *NATClass) Update(n *model.NAT) {
 
 	if oldDomain, ok := c.idToDomain[n.ID]; ok && oldDomain != n.Domain {
 		delete(c.list, oldDomain)
+		delete(c.list, strings.ToLower(oldDomain))
 	}
 
 	c.list[n.Domain] = n
+	c.list[strings.ToLower(n.Domain)] = n
 	c.idToDomain[n.ID] = n.Domain
 
 	c.listMu.Unlock()
@@ -124,6 +127,7 @@ func (c *NATClass) Delete(idList []uint64) {
 	for _, id := range idList {
 		if domain, ok := c.idToDomain[id]; ok {
 			delete(c.list, domain)
+			delete(c.list, strings.ToLower(domain))
 			delete(c.idToDomain, id)
 		}
 	}
@@ -136,7 +140,10 @@ func (c *NATClass) GetNATConfigByDomain(domain string) *model.NAT {
 	c.listMu.RLock()
 	defer c.listMu.RUnlock()
 
-	return c.list[domain]
+	if n, ok := c.list[domain]; ok {
+		return n
+	}
+	return c.list[strings.ToLower(domain)]
 }
 
 func (c *NATClass) GetDomain(id uint64) string {

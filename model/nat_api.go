@@ -6,4 +6,5 @@ type NATForm struct {
 	ServerID uint64 `json:"server_id,omitempty"`
 	Host     string `json:"host,omitempty"`
 	Domain   string `json:"domain,omitempty"`
+	AutoCert *bool  `json:"auto_cert,omitempty"`
 }

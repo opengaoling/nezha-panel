@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"net"
+	"net/http"
 	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jinzhu/copier"
@@ -73,9 +76,12 @@ func createNAT(c *gin.Context) (uint64, error) {
 	n.UserID = uid
 	n.Enabled = nf.Enabled
 	n.Name = nf.Name
-	n.Domain = nf.Domain
+	n.Domain = strings.ToLower(strings.TrimSpace(nf.Domain))
 	n.Host = nf.Host
 	n.ServerID = nf.ServerID
+	if nf.AutoCert != nil {
+		n.AutoCert = *nf.AutoCert
+	}
 
 	if err := singleton.DB.Create(&n).Error; err != nil {
 		return 0, newGormError("%v", err)
@@ -136,9 +142,12 @@ func updateNAT(c *gin.Context) (any, error) {
 
 	n.Enabled = nf.Enabled
 	n.Name = nf.Name
-	n.Domain = nf.Domain
+	n.Domain = strings.ToLower(strings.TrimSpace(nf.Domain))
 	n.Host = nf.Host
 	n.ServerID = nf.ServerID
+	if nf.AutoCert != nil {
+		n.AutoCert = *nf.AutoCert
+	}
 
 	if err := singleton.DB.Save(&n).Error; err != nil {
 		return 0, newGormError("%v", err)
@@ -178,4 +187,49 @@ func batchDeleteNAT(c *gin.Context) (any, error) {
 
 	singleton.NATShared.Delete(n)
 	return nil, nil
+}
+
+// checkNATDomainForTLS validates domain authorization for Caddy on-demand TLS
+func checkNATDomainForTLS(c *gin.Context) {
+	domain := strings.ToLower(strings.TrimSpace(c.Query("domain")))
+	if domain == "" {
+		c.String(http.StatusBadRequest, "empty domain")
+		return
+	}
+
+	// 1. Allow dashboard host and its direct subdomains
+	if singleton.Conf != nil {
+		panelHost := strings.ToLower(strings.TrimSpace(singleton.Conf.InstallHost))
+		if h, _, err := net.SplitHostPort(panelHost); err == nil && h != "" {
+			panelHost = h
+		}
+		if panelHost != "" {
+			if domain == panelHost || strings.HasSuffix(domain, "."+panelHost) {
+				c.String(http.StatusOK, "ok")
+				return
+			}
+			// Check parent domain (e.g., if panelHost is a.example.com, parent is example.com)
+			parts := strings.Split(panelHost, ".")
+			if len(parts) >= 3 {
+				parentDomain := strings.Join(parts[1:], ".")
+				if domain == parentDomain || strings.HasSuffix(domain, "."+parentDomain) {
+					if natConfig := singleton.NATShared.GetNATConfigByDomain(domain); natConfig != nil && natConfig.Enabled {
+						c.String(http.StatusOK, "ok")
+						return
+					}
+				}
+			}
+		}
+	}
+
+	// 2. Allow registered NAT profiles with auto_cert enabled (or enabled NAT profile)
+	natConfig := singleton.NATShared.GetNATConfigByDomain(domain)
+	if natConfig != nil && natConfig.Enabled {
+		if natConfig.AutoCert {
+			c.String(http.StatusOK, "ok")
+			return
+		}
+	}
+
+	c.String(http.StatusNotFound, "domain not allowed")
 }

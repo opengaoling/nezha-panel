@@ -123,8 +123,8 @@ func secretPathHandler(next http.Handler) http.Handler {
 
 		// For requests without the secret path in the URL:
 		// Subresources (/assets/*, /dashboard/assets/*, static icons) and /api/*
-		// are allowed if authorized by cookie/header/PAT, or if completing an OAuth2 callback.
-		if (hasCookieSecret || hasHeaderSecret || hasPAT || strings.HasPrefix(reqPath, "/api/v1/oauth2/callback")) && isSubresourceOrApi(reqPath) {
+		// are allowed if authorized by cookie/header/PAT, or if completing an OAuth2 callback or Caddy check-domain.
+		if (hasCookieSecret || hasHeaderSecret || hasPAT || strings.HasPrefix(reqPath, "/api/v1/oauth2/callback") || reqPath == "/api/v1/nat/check-domain") && isSubresourceOrApi(reqPath) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -242,6 +242,11 @@ func isPublicPath(p, method string) bool {
 
 	// Public OAuth2 initiation and callback (GET only)
 	if strings.HasPrefix(p, "/api/v1/oauth2") && method == http.MethodGet {
+		return true
+	}
+
+	// Public Caddy On-Demand TLS check-domain endpoint (GET only)
+	if p == "/api/v1/nat/check-domain" && method == http.MethodGet {
 		return true
 	}
 

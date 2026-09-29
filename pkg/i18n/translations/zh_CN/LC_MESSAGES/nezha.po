@@ -313,3 +313,7 @@ msgstr "故障"
 #: service/singleton/user.go:60
 msgid "user id not specified"
 msgstr "用户 ID 未指定"
+
+#: cmd/dashboard/controller/nat.go:193
+msgid "AutoCert"
+msgstr "自动申请证书"

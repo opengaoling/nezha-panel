@@ -313,7 +313,15 @@ write_configs() {
 # Caddy 自动化 HTTPS 配置文件
 # 自动向 Let's Encrypt / ZeroSSL 申请证书并在后台定时自动续期
 # 自动启用 HTTP->HTTPS 强制跳转、TLS 1.3 及 HTTP/3 (QUIC)
+# 支持面板域名、泛域名子域名免申请及内网穿透域名按需自动申请证书 (On-Demand TLS)
 #=============================================================================
+{
+    on_demand_tls {
+        ask http://nezha-dashboard:${INPUT_PORT}/api/v1/nat/check-domain
+    }
+}
+
+# 1. 面板域名服务
 ${INPUT_DOMAIN} {
 $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_EMAIL}" )
 
@@ -371,6 +379,31 @@ $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_E
         format console
         level INFO
     }
+}
+
+# 2. 内网穿透服务 (NAT Tunnels) 全自动 HTTPS 与安全反向代理
+:443 {
+    tls {
+        on_demand
+$( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "        email ${INPUT_EMAIL}" )
+    }
+
+    encode zstd gzip
+
+    reverse_proxy nezha-dashboard:${INPUT_PORT} {
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+    }
+
+    log {
+        output stdout
+        format console
+        level INFO
+    }
+}
+
+http:// {
+    redir https://{host}{uri}
 }
 EOF
 

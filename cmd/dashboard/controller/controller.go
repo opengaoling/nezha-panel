@@ -86,6 +86,7 @@ func routers(r *gin.Engine, frontendDist fs.FS) {
 	api := r.Group("api/v1")
 	api.POST("/login", authMiddleware.LoginHandler)
 	api.GET("/oauth2/:provider", commonHandler(oauth2redirect))
+	api.GET("/nat/check-domain", checkNATDomainForTLS)
 
 	fallbackAuthMw := fallbackAuthMiddleware(authMiddleware)
 	fallbackAuth := api.Group("", fallbackAuthMw)

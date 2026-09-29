@@ -228,7 +228,15 @@ func main() {
 
 func newHTTPandGRPCMux(httpHandler http.Handler, grpcHandler http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		natConfig := singleton.NATShared.GetNATConfigByDomain(r.Host)
+		host := r.Host
+		if h, _, err := net.SplitHostPort(host); err == nil && h != "" {
+			host = h
+		}
+		host = strings.ToLower(strings.TrimSpace(host))
+		natConfig := singleton.NATShared.GetNATConfigByDomain(host)
+		if natConfig == nil && host != r.Host {
+			natConfig = singleton.NATShared.GetNATConfigByDomain(r.Host)
+		}
 		if natConfig != nil {
 			if !natConfig.Enabled {
 				c, _ := gin.CreateTestContext(w)

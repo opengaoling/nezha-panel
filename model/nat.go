@@ -9,6 +9,7 @@ type NAT struct {
 	ServerID uint64 `json:"server_id"`
 	Host     string `json:"host"`
 	Domain   string `json:"domain" gorm:"unique"`
+	AutoCert bool   `json:"auto_cert" gorm:"default:false"`
 }
 
 // HasPermission 在 owner/admin 之上叠加 PAT 的 server_ids 白名单，
