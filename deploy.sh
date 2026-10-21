@@ -3,6 +3,7 @@
 # 🚀 哪吒监控定制安全增强版 · 一键部署脚本 (内置 Caddy 自动申请与自动续期 SSL 证书)
 # 项目地址: https://github.com/opengaoling/nezha-panel
 # 项目支持系统: Ubuntu / Debian / CentOS / AlmaLinux / Rocky / Fedora / Alpine
+# 与 sub2api-request-audit / new-api 深度兼容，共享 Caddy 网关，避免端口冲突
 #=============================================================================
 
 # ANSI 颜色定义
@@ -16,11 +17,14 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.5.0"
+SCRIPT_VERSION="v2.6.0"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
 CADDY_IMAGE="caddy:2.8.4-alpine"
+
+CADDY_GATEWAY_DIR="/opt/caddy"
+CADDY_GATEWAY_NET="caddy_gateway_net"
 
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_ok()   { echo -e "${GREEN}[ OK ]${NC} $1"; }
@@ -54,7 +58,7 @@ generate_random_secret() {
 install_dependencies() {
     log_info "正在检查基础运行依赖 (curl, tar, openssl)..."
     local need_install=""
-    for cmd in curl tar openssl awk; do
+    for cmd in curl tar openssl awk sed; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             need_install="$need_install $cmd"
         fi
@@ -159,7 +163,7 @@ gather_user_input() {
         INPUT_EMAIL="$EMAIL"
     fi
 
-    # 3. 面板监听端口
+    # 3. 面板监听通信端口
     if [ -z "$PORT" ]; then
         if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
             INPUT_PORT="$DEFAULT_PORT"
@@ -218,7 +222,7 @@ gather_user_input() {
     echo "  - 内部通信端口: ${GREEN}${INPUT_PORT}${NC}"
     echo "  - 8位安全路径:  ${GREEN}${INPUT_SECRET}${NC}"
     echo "  - 安装目录:     ${GREEN}${INPUT_DIR}${NC}"
-    echo "  - 证书方案:     ${GREEN}Caddy 自动申请 Let's Encrypt / ZeroSSL 证书并自动在后台静默续期${NC}"
+    echo "  - 证书方案:     ${GREEN}统一 Caddy 网关自动申请与续期 (兼容 sub2api / new-api 共用 80/443)${NC}"
     echo ""
     if [ "$NON_INTERACTIVE" != "true" ] && [ "$NON_INTERACTIVE" != "1" ]; then
         read -r -p "确认以上配置并开始部署? [Y/n]: " confirm
@@ -232,13 +236,11 @@ gather_user_input() {
 # 检查端口占用 (80, 443, $INPUT_PORT)
 check_ports() {
     log_info "正在检查端口占用情况 (80, 443, ${INPUT_PORT})..."
-    # 检查是否有名为 caddy-ssl-test 的测试容器占用了 80/443
     if command -v docker >/dev/null 2>&1 && docker ps -a -q -f name=caddy-ssl-test 2>/dev/null | grep -q .; then
         log_info "清理历史临时测试容器 caddy-ssl-test..."
         docker rm -f caddy-ssl-test >/dev/null 2>&1 || true
     fi
 
-    # 检测宿主机是否有独立原生 nezha-dashboard.service 服务占用通信端口
     if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nezha-dashboard.service 2>/dev/null; then
         log_warn "检测到宿主机正在运行原生 nezha-dashboard.service 服务。"
         read -r -p "是否停止原生服务以便无缝切换至 Docker Compose 统一管理？[Y/n]: " stop_systemd
@@ -250,17 +252,28 @@ check_ports() {
     fi
 
     local conflict=false
-    for p in 80 443 "$INPUT_PORT"; do
+    for p in 80 443; do
         if ss -tuln 2>/dev/null | grep -q ":$p " || netstat -tuln 2>/dev/null | grep -q ":$p "; then
-            # 检查是否是现有 caddy 或 nezha 容器占用的，若目录一致则可直接覆盖升级
-            if [ -d "$INPUT_DIR" ] && [ -f "$INPUT_DIR/docker-compose.yaml" ]; then
-                log_warn "检测到端口 $p 已在使用，正在检查是否为本服务..."
+            if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "caddy-gateway"; then
+                log_ok "检测到端口 $p 已由统一 Caddy 网关 (caddy-gateway) 监听，将复用该网关自动扩展域名 HTTPS。"
+            elif docker ps -a --format '{{.Names}}' 2>/dev/null | grep -E -qx "nezha-caddy|sub2api-caddy|new-api-caddy"; then
+                log_info "检测到历史独立 Caddy 容器占用了端口 $p，部署流程将自动升级合并至 caddy-gateway。"
             else
-                log_err "端口 $p 已被其他程序占用，请先停止占用该端口的服务 (例如 Nginx/Apache) 后再试。"
+                log_warn "端口 $p 已被其他程序 (例如 Nginx/Apache) 占用，请确认是否继续。"
                 conflict=true
             fi
         fi
     done
+
+    local p="$INPUT_PORT"
+    if ss -tuln 2>/dev/null | grep -q ":$p " || netstat -tuln 2>/dev/null | grep -q ":$p "; then
+        if [ -d "$INPUT_DIR" ] && [ -f "$INPUT_DIR/docker-compose.yaml" ]; then
+            log_warn "检测到通信端口 $p 已在使用，正在检查是否为本服务..."
+        else
+            log_err "通信端口 $p 已被其他程序占用，请修改端口或停止占用程序后再试。"
+            conflict=true
+        fi
+    fi
 
     if [ "$conflict" = "true" ]; then
         read -r -p "是否尝试强行继续部署? [y/N]: " force_continue
@@ -297,6 +310,93 @@ open_firewall_ports() {
     fi
 }
 
+# 统一初始化 Caddy 全局 HTTPS 网关 (解决多项目 80/443 冲突)
+ensure_caddy_gateway() {
+    mkdir -p "${CADDY_GATEWAY_DIR}/conf.d"
+
+    if ! docker network inspect "${CADDY_GATEWAY_NET}" >/dev/null 2>&1; then
+        docker network create "${CADDY_GATEWAY_NET}" >/dev/null 2>&1 || true
+    fi
+
+    # 清理历史独立绑定的 caddy 容器
+    for old_caddy in nezha-caddy sub2api-caddy new-api-caddy caddy-ssl-test; do
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$old_caddy"; then
+            log_info "发现历史独立 Caddy 容器 $old_caddy，正在升级接管至统一网关..."
+            docker rm -f "$old_caddy" >/dev/null 2>&1 || true
+        fi
+    done
+
+    if [ ! -f "${CADDY_GATEWAY_DIR}/Caddyfile" ]; then
+        cat > "${CADDY_GATEWAY_DIR}/Caddyfile" << 'EOF'
+#=============================================================================
+# Caddy 统一自动化 HTTPS 路由网关 (Shared Caddy Gateway)
+# 自动向 Let's Encrypt / ZeroSSL 申请证书并在后台定时自动续期
+# 支持多项目共用 80/443 端口，零端口冲突
+#=============================================================================
+{
+    admin off
+}
+
+:80 {
+    respond "Caddy Gateway Ready" 200
+}
+
+import /etc/caddy/conf.d/*.caddy
+EOF
+    fi
+
+    if [ ! -f "${CADDY_GATEWAY_DIR}/docker-compose.yaml" ]; then
+        cat > "${CADDY_GATEWAY_DIR}/docker-compose.yaml" << 'EOF'
+services:
+  caddy:
+    image: caddy:2.8.4-alpine
+    container_name: caddy-gateway
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./conf.d:/etc/caddy/conf.d:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - caddy_gateway_net
+
+volumes:
+  caddy_data:
+    name: caddy_gateway_data
+  caddy_config:
+    name: caddy_gateway_config
+
+networks:
+  caddy_gateway_net:
+    name: caddy_gateway_net
+    external: true
+EOF
+    fi
+
+    if ! docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "caddy-gateway"; then
+        log_info "正在启动统一 Caddy 自动化 HTTPS 网关 (caddy-gateway)..."
+        (cd "${CADDY_GATEWAY_DIR}" && (docker compose up -d 2>/dev/null || docker-compose up -d 2>/dev/null))
+    fi
+}
+
+reload_caddy() {
+    log_info "正在重载统一 Caddy 网关并更新 SSL 证书路由..."
+    if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "caddy-gateway"; then
+        docker exec caddy-gateway caddy reload --config /etc/caddy/Caddyfile >/dev/null 2>&1 || {
+            (cd "${CADDY_GATEWAY_DIR}" && (docker compose restart caddy 2>/dev/null || docker-compose restart caddy 2>/dev/null))
+        }
+        log_ok "Caddy 网关已成功应用新站点配置！"
+    else
+        ensure_caddy_gateway
+    fi
+}
+
 # 写入部署配置文件
 write_configs() {
     log_info "正在初始化部署目录: $INPUT_DIR"
@@ -306,32 +406,19 @@ write_configs() {
     local secret_lower
     secret_lower="$(echo "$INPUT_SECRET" | tr '[:upper:]' '[:lower:]')"
 
-    # 1. 写入 Caddyfile
-    log_info "正在生成 Caddyfile 自动化 HTTPS 配置文件..."
-    cat > "$INPUT_DIR/Caddyfile" <<EOF
-#=============================================================================
-# Caddy 自动化 HTTPS 配置文件
-# 自动向 Let's Encrypt / ZeroSSL 申请证书并在后台定时自动续期
-# 自动启用 HTTP->HTTPS 强制跳转、TLS 1.3 及 HTTP/3 (QUIC)
-# 支持面板域名、泛域名子域名免申请及内网穿透域名按需自动申请证书 (On-Demand TLS)
-#=============================================================================
-{
-    on_demand_tls {
-        ask http://nezha-dashboard:${INPUT_PORT}/api/v1/nat/check-domain
-    }
-}
-
-# 1. 面板域名服务
+    # 1. 写入统一网关下的 Nezha 独立 Caddy 配置
+    ensure_caddy_gateway
+    log_info "正在写入哪吒面板站点配置至统一网关: ${CADDY_GATEWAY_DIR}/conf.d/nezha.caddy"
+    cat > "${CADDY_GATEWAY_DIR}/conf.d/nezha.caddy" <<EOF
+# 哪吒面板域名服务
 ${INPUT_DOMAIN} {
 $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_EMAIL}" )
 
-    # 启用智能高效压缩 (排除 gRPC 二进制数据流)
     @notGrpc {
         not header Content-Type application/grpc*
     }
     encode @notGrpc zstd gzip
 
-    # 1. gRPC 流量匹配并反向代理 (Agent 通信)，必须透传 h2c (Cleartext HTTP/2)
     @grpc {
         header Content-Type application/grpc*
     }
@@ -343,9 +430,6 @@ $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_E
         }
     }
 
-    # 2. 匹配合法面板请求：
-    # (a) URL 显式包含 8 位安全路径（如 /${INPUT_SECRET}/ 或 /${INPUT_SECRET}/dashboard/）
-    # (b) 或携带合法安全凭据且请求的是前端资源、仪表盘页面或 API（如 /dashboard/*, /terminal/*, /assets/*, /api/*）
     @validPanel \`{path}.startsWith('/${INPUT_SECRET}') || {path}.startsWith('/${secret_lower}') || (({http.request.cookie.nz-secret-path} == '${INPUT_SECRET}' || {http.request.cookie.gw-secret-path} == '${INPUT_SECRET}' || {http.request.header.X-Secret-Path} == '${INPUT_SECRET}' || {http.request.uri.query.secret} == '${INPUT_SECRET}') && ({path}.startsWith('/assets/') || {path}.startsWith('/dashboard') || {path}.startsWith('/terminal') || {path}.startsWith('/api/') || {path} == '/favicon.ico' || {path} == '/manifest.json' || {path} == '/robots.txt'))\`
     handle @validPanel {
         header {
@@ -367,47 +451,20 @@ $( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "    tls ${INPUT_E
         }
     }
 
-    # 3. 兜底伪装：未携带安全凭据的探测请求完全呈现 Caddy 原生默认欢迎页与静态服务
     handle {
         root * /usr/share/caddy
         file_server
     }
 
-    # 日志输出配置
     log {
         output stdout
         format console
         level INFO
     }
-}
-
-# 2. 内网穿透服务 (NAT Tunnels) 全自动 HTTPS 与安全反向代理
-:443 {
-    tls {
-        on_demand
-$( [ -n "$INPUT_EMAIL" ] && [ "$INPUT_EMAIL" != "0" ] && echo "        email ${INPUT_EMAIL}" )
-    }
-
-    encode zstd gzip
-
-    reverse_proxy nezha-dashboard:${INPUT_PORT} {
-        header_up Host {host}
-        header_up X-Real-IP {remote_host}
-    }
-
-    log {
-        output stdout
-        format console
-        level INFO
-    }
-}
-
-http:// {
-    redir https://{host}{uri}
 }
 EOF
 
-    # 2. 写入 docker-compose.yaml
+    # 2. 写入 docker-compose.yaml (加入 caddy_gateway_net，避免端口绑定冲突)
     log_info "正在生成 docker-compose.yaml 文件..."
     cat > "$INPUT_DIR/docker-compose.yaml" <<EOF
 services:
@@ -416,48 +473,23 @@ services:
     container_name: nezha-dashboard
     restart: always
     ports:
-      - "${INPUT_PORT}:${INPUT_PORT}" # Agent gRPC 通信端口
+      - "${INPUT_PORT}:${INPUT_PORT}"
     environment:
       - TZ=Asia/Shanghai
       - NEZHA_SECRET_PATH=${INPUT_SECRET}
     volumes:
       - ./data:/dashboard/data
     networks:
-      nezha-net:
-        ipv4_address: 172.18.0.2
-
-  caddy:
-    image: ${CADDY_IMAGE}
-    container_name: nezha-caddy
-    restart: always
-    ports:
-      - "80:80"       # ACME 验证与自动跳转 HTTPS
-      - "443:443"     # HTTPS (TLS 1.3 / HTTP/2)
-      - "443:443/udp" # HTTP/3 (QUIC)
-    extra_hosts:
-      - "nezha-dashboard:172.18.0.2"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data      # 核心证书持久化目录，确保证书自动续期安全保存
-      - caddy_config:/config  # Caddy 配置缓存
-    depends_on:
-      - nezha-dashboard
-    networks:
       - nezha-net
-
-volumes:
-  caddy_data:
-    name: nezha_caddy_data
-  caddy_config:
-    name: nezha_caddy_config
+      - caddy_gateway_net
 
 networks:
   nezha-net:
     name: nezha_internal_net
     driver: bridge
-    ipam:
-      config:
-        - subnet: 172.18.0.0/16
+  caddy_gateway_net:
+    name: caddy_gateway_net
+    external: true
 EOF
 
     # 3. 写入环境配置备忘 .env
@@ -472,10 +504,9 @@ EOF
     # 4. 创建便捷管理命令 nezha
     cat > "$INPUT_DIR/nezha.sh" << 'EOF'
 #!/usr/bin/env bash
-# Nezha Dashboard & Caddy Management Tool
-VERSION="v2.5.0"
+# Nezha Dashboard Management Tool
+VERSION="v2.6.0"
 
-# 解析实际路径以防通过软链接执行
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
     DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
@@ -501,7 +532,6 @@ clean_docker_cache() {
     echo "正在清理 Docker 悬空镜像及未使用的构建缓存..."
     docker image prune -f
     docker builder prune -f 2>/dev/null || true
-    docker rm -f caddy-ssl-test 2>/dev/null || true
     echo "Docker 镜像与构建缓存清理完毕！"
 }
 
@@ -522,10 +552,10 @@ clean_container_logs() {
 }
 
 clean_containers_keep_data() {
-    echo "此操作将停止并移除面板和 Caddy 容器及网络，但保留数据目录和证书！"
+    echo "此操作将停止并移除面板容器，但保留数据目录和证书！"
     read -r -p "确认清理容器与网络环境? [y/N]: " confirm_c
     if [[ "$confirm_c" =~ ^[yY]$ ]]; then
-        echo "正在停止容器并清理网络环境..."
+        echo "正在停止容器..."
         $CMD down --remove-orphans 2>/dev/null || true
         echo "容器已清理完毕，数据目录与 SSL 证书依然完整保留。"
         echo "如需重新启动服务，只需执行: nezha start"
@@ -533,17 +563,25 @@ clean_containers_keep_data() {
 }
 
 clean_uninstall_all() {
-    echo "⚠️  高危警告：此操作将彻底删除哪吒面板容器、网络、SSL 证书卷以及所有数据库与配置数据！"
+    echo "⚠️  高危警告：此操作将彻底删除哪吒面板容器、网络以及所有数据库与配置数据！"
     read -r -p "此操作不可逆，请确认是否继续？请输入 'yes' 确认: " confirm_clean
     if [ "$confirm_clean" = "yes" ] || [ "$confirm_clean" = "YES" ]; then
         echo "正在彻底卸载与清理..."
         $CMD down -v --remove-orphans 2>/dev/null || true
-        docker volume rm -f nezha_caddy_data nezha_caddy_config 2>/dev/null || true
         docker network rm nezha_internal_net 2>/dev/null || true
+        rm -f "/opt/caddy/conf.d/nezha.caddy" 2>/dev/null || true
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "caddy-gateway"; then
+            docker exec caddy-gateway caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+            if [ -d "/opt/caddy/conf.d" ] && [ -z "$(ls -A /opt/caddy/conf.d/*.caddy 2>/dev/null)" ]; then
+                (cd /opt/caddy && (docker compose down -v 2>/dev/null || docker-compose down -v 2>/dev/null))
+                rm -rf /opt/caddy 2>/dev/null || true
+                docker network rm caddy_gateway_net 2>/dev/null || true
+            fi
+        fi
         rm -f /usr/local/bin/nezha 2>/dev/null || true
         cd /
         rm -rf "$BASE_DIR"
-        echo "哪吒面板与 Caddy 服务及所有数据已彻底卸载并清理完毕！"
+        echo "哪吒面板服务及所有数据已彻底卸载并清理完毕！"
         exit 0
     else
         echo "已取消彻底卸载操作。"
@@ -558,7 +596,7 @@ cleanup_menu() {
         echo "============================================================================"
         echo "  1. 清理 Docker 悬空镜像与构建缓存 (释放磁盘空间，不影响正在运行的服务)"
         echo "  2. 截断/清理 Docker 容器超大运行日志 (释放日志磁盘占用)"
-        echo "  3. 停止并清理容器与虚拟网络 (保留面板数据和 SSL 证书配置)"
+        echo "  3. 停止并清理容器 (保留面板数据和 SSL 证书配置)"
         echo "  4. 彻底卸载面板端与清理所有数据/证书 (危险操作，不可逆)"
         echo "  ----------------------------------------------------------------------------"
         echo "  0. 返回主菜单"
@@ -585,9 +623,9 @@ show_info() {
     echo "后台管理控制: https://${DOMAIN}/${SECRET_PATH}/dashboard/"
     echo "默认管理账号: admin"
     echo "默认管理密码: admin (首次进入后台请立即修改)"
-    echo "内部通信端口: ${PORT}"
+    echo "通信通信端口: ${PORT}"
     echo "安装目录:     ${BASE_DIR}"
-    echo "证书管理机制: Caddy 自动申请与全自动后台续期 (免配置 Crontab)"
+    echo "证书管理机制: 统一 Caddy 网关自动申请与后台续期 (免配置 Crontab)"
     echo "============================================================================"
 }
 
@@ -598,12 +636,12 @@ show_menu() {
         echo "       🚀 哪吒监控定制安全增强版 · 管理控制台 (${VERSION})       "
         echo "============================================================================"
         echo "  1. 查看服务运行状态 (Status)"
-        echo "  2. 启动面板与 Caddy 服务 (Start)"
+        echo "  2. 启动服务 (Start)"
         echo "  3. 停止服务 (Stop)"
         echo "  4. 重启所有容器服务 (Restart)"
         echo "  5. 查看部署配置信息 (Info)"
         echo "  6. 查看面板服务日志 (Panel Logs)"
-        echo "  7. 查看 Caddy 与 SSL 证书日志 (Caddy & SSL Logs)"
+        echo "  7. 查看 Caddy 网关与 SSL 证书日志 (Caddy & SSL Logs)"
         echo "  8. 平滑更新面板镜像 (Update)"
         echo "  9. 系统清理与维护 (Docker 缓存清理 / 日志截断 / 彻底卸载)"
         echo "  ----------------------------------------------------------------------------"
@@ -617,7 +655,7 @@ show_menu() {
             4) echo "正在重启所有容器..."; $CMD restart; press_any_key ;;
             5) show_info; press_any_key ;;
             6) $CMD logs -f nezha-dashboard ;;
-            7) echo "查看 Caddy 日志 (Ctrl+C 退出)..."; $CMD logs -f caddy ;;
+            7) echo "查看 Caddy 日志 (Ctrl+C 退出)..."; docker logs -f caddy-gateway 2>/dev/null || echo "caddy-gateway 未在运行" ;;
             8) echo "正在拉取最新镜像并更新..."; $CMD pull && $CMD up -d --force-recreate --remove-orphans; press_any_key ;;
             9) cleanup_menu ;;
             0|q|Q) echo "已退出。"; exit 0 ;;
@@ -647,8 +685,7 @@ case "$1" in
         $CMD logs -f nezha-dashboard
         ;;
     logs-caddy|logs-ssl)
-        echo "查看 Caddy 证书申请与 Web 访问日志 (Ctrl+C 退出)..."
-        $CMD logs -f caddy
+        docker logs -f caddy-gateway 2>/dev/null || echo "caddy-gateway 未在运行"
         ;;
     update)
         echo "正在拉取最新镜像并平滑更新..."
@@ -688,13 +725,14 @@ start_services() {
     $COMPOSE_CMD pull || true
     $COMPOSE_CMD up -d --force-recreate --remove-orphans
 
+    reload_caddy
+
     log_info "等待服务启动与初始化..."
     sleep 5
 
-    # 简单健康检测
-    local running_cnt="$($COMPOSE_CMD ps --status running 2>/dev/null | grep -E "nezha-dashboard|nezha-caddy" | wc -l)"
-    if [ "$running_cnt" -ge 2 ]; then
-        log_ok "面板容器与 Caddy 证书服务均已成功启动！"
+    local running_cnt="$($COMPOSE_CMD ps --status running 2>/dev/null | grep -E "nezha-dashboard" | wc -l)"
+    if [ "$running_cnt" -ge 1 ]; then
+        log_ok "哪吒监控面板容器已成功启动！"
     else
         log_warn "容器启动中，请使用 '$COMPOSE_CMD ps' 查看容器实时状态。"
     fi
@@ -717,9 +755,8 @@ print_success() {
     echo -e "  🔑 ${BOLD}初始管理员密码${NC}:   ${YELLOW}admin${NC} ${RED}(首次登录后请务必立即修改！)${NC}"
     echo ""
     echo -e "  🔒 ${BOLD}SSL 域名证书状态${NC}:"
-    echo -e "     - ${GREEN}Caddy 自动化 HTTPS 已就绪${NC}：正在/已自动向 Let's Encrypt / ZeroSSL 申请证书。"
-    echo -e "     - ${GREEN}全自动证书续期${NC}：后台服务会在证书到期前自动续签，${BOLD}无需任何人工干预或配置 Crontab${NC}。"
-    echo -e "     - 证书及密钥已在 Docker 卷 ${CYAN}nezha_caddy_data${NC} 中持久化保存。"
+    echo -e "     - ${GREEN}统一 Caddy 网关已就绪${NC}：已自动向 Let's Encrypt / ZeroSSL 申请证书。"
+    echo -e "     - ${GREEN}全自动证书续期${NC}：后台服务会在证书到期前自动续签，${BOLD}与 sub2api / new-api 共用 80/443 零冲突${NC}。"
     echo ""
     echo -e "  🖥️  ${BOLD}被控端（Agent）接入命令${NC}:"
     echo -e "     ${YELLOW}curl -L https://raw.githubusercontent.com/nezhahq/scripts/main/agent/install.sh -o nezha.sh && chmod +x nezha.sh${NC}"
@@ -749,13 +786,11 @@ get_compose_cmd() {
     fi
 }
 
-# 按回车键继续
 press_any_key() {
     echo ""
     read -r -p "按回车键继续..." dummy
 }
 
-# 服务管理：查看运行状态
 service_status() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     if [ ! -d "$target_dir" ] || [ ! -f "$target_dir/docker-compose.yaml" ]; then
@@ -767,16 +802,15 @@ service_status() {
     (cd "$target_dir" && $cmd ps)
 }
 
-# 服务管理：启动服务
 service_start() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     local cmd="$(get_compose_cmd)"
-    log_info "正在启动面板与 Caddy 服务..."
+    log_info "正在启动面板服务..."
     (cd "$target_dir" && $cmd up -d)
+    reload_caddy
     log_ok "服务已启动。"
 }
 
-# 服务管理：停止服务
 service_stop() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     local cmd="$(get_compose_cmd)"
@@ -785,16 +819,15 @@ service_stop() {
     log_ok "服务已停止。"
 }
 
-# 服务管理：重启服务
 service_restart() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     local cmd="$(get_compose_cmd)"
     log_info "正在重启所有容器..."
     (cd "$target_dir" && $cmd restart)
+    reload_caddy
     log_ok "所有服务已重启完成。"
 }
 
-# 服务管理：查看面板日志
 service_logs() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     local cmd="$(get_compose_cmd)"
@@ -802,24 +835,20 @@ service_logs() {
     (cd "$target_dir" && $cmd logs -f nezha-dashboard)
 }
 
-# 服务管理：查看 Caddy 日志
 service_logs_caddy() {
-    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-    local cmd="$(get_compose_cmd)"
-    echo "正在查看 Caddy 域名证书申请与 Web 访问日志 (按 Ctrl+C 退出)..."
-    (cd "$target_dir" && $cmd logs -f caddy)
+    echo "正在查看 Caddy 网关域名证书申请与 Web 访问日志 (按 Ctrl+C 退出)..."
+    docker logs -f caddy-gateway 2>/dev/null || log_warn "caddy-gateway 网关未在运行。"
 }
 
-# 服务管理：拉取镜像平滑更新
 service_update() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     local cmd="$(get_compose_cmd)"
     log_info "正在拉取最新镜像并平滑更新..."
     (cd "$target_dir" && $cmd pull && $cmd up -d --remove-orphans)
+    reload_caddy
     log_ok "面板更新完成！"
 }
 
-# 服务管理：显示配置与访问链接
 service_info() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     if [ -f "$target_dir/.env" ]; then
@@ -834,14 +863,13 @@ service_info() {
     echo -e "  - 后台管理控制: ${GREEN}https://${DOMAIN}/${SECRET_PATH}/dashboard/${NC}"
     echo -e "  - 默认管理账号: ${YELLOW}admin${NC}"
     echo -e "  - 默认管理密码: ${YELLOW}admin (首次进入后台请立即修改)${NC}"
-    echo -e "  - 内部通信端口: ${GREEN}${PORT}${NC}"
+    echo -e "  - 通信通信端口: ${GREEN}${PORT}${NC}"
     echo -e "  - 安装目录:     ${GREEN}${INSTALL_DIR:-$target_dir}${NC}"
-    echo -e "  - 证书管理机制: ${GREEN}Caddy 自动申请与全自动后台续期 (免配置 Crontab)${NC}"
+    echo -e "  - 证书管理机制: ${GREEN}统一 Caddy 网关自动申请与全自动后台续期 (免配置 Crontab)${NC}"
     echo -e "${CYAN}${BOLD}============================================================================${NC}"
     echo ""
 }
 
-# 清理功能 1: 清理 Docker 悬空镜像与构建缓存
 clean_docker_cache() {
     log_info "正在清理 Docker 悬空镜像及未使用的构建缓存..."
     if command -v docker >/dev/null 2>&1; then
@@ -854,7 +882,6 @@ clean_docker_cache() {
     fi
 }
 
-# 清理功能 2: 截断并清理容器日志
 clean_container_logs() {
     log_info "正在扫描并截断清理 Docker 容器日志文件..."
     local cleaned=0
@@ -871,15 +898,14 @@ clean_container_logs() {
     fi
 }
 
-# 清理功能 3: 停止并清理容器与虚拟网络 (保留数据与证书)
 clean_containers_keep_data() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     local cmd="$(get_compose_cmd)"
     if [ -d "$target_dir" ] && [ -f "$target_dir/docker-compose.yaml" ]; then
-        log_warn "此操作将停止并移除面板和 Caddy 容器实例及虚拟网络，但会完整保留数据目录和 SSL 证书！"
+        log_warn "此操作将停止并移除面板容器，但会完整保留数据目录和 SSL 证书！"
         read -r -p "确认清理容器与网络环境? [y/N]: " confirm_clean_c
         if [[ "$confirm_clean_c" =~ ^[yY]$ ]]; then
-            log_info "正在停止容器并清理网络环境..."
+            log_info "正在停止容器..."
             (cd "$target_dir" && $cmd down --remove-orphans 2>/dev/null || true)
             log_ok "容器与虚拟网络已清理完毕，数据目录 ($target_dir/data) 和 SSL 证书依然完整保留。"
             log_info "如需重新启动服务，只需执行: nezha start 或 $0 start"
@@ -891,7 +917,6 @@ clean_containers_keep_data() {
     fi
 }
 
-# 清理功能 4: 彻底卸载面板并清理全部数据与证书 (高危卸载)
 clean_uninstall_all() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     local cmd="$(get_compose_cmd)"
@@ -900,9 +925,9 @@ clean_uninstall_all() {
     echo -e "${RED}${BOLD}  ⚠️  高危警告：彻底卸载与完全清除操作                                        ${NC}"
     echo -e "${RED}${BOLD}============================================================================${NC}"
     echo -e "${RED}此操作将："
-    echo -e "  1. 彻底停止并删除所有哪吒与 Caddy 容器实例"
+    echo -e "  1. 彻底停止并删除哪吒面板容器实例"
     echo -e "  2. 删除内部虚拟桥接网络 nezha_internal_net"
-    echo -e "  3. 删除 Caddy 证书持久化卷 (nezha_caddy_data / nezha_caddy_config)"
+    echo -e "  3. 删除网关路由配置 (${CADDY_GATEWAY_DIR}/conf.d/nezha.caddy)"
     echo -e "  4. 彻底删除安装目录 (${target_dir}) 及其所有数据库和配置数据！"
     echo -e "  5. 移除全局快捷管理命令 /usr/local/bin/nezha"
     echo -e "${NC}"
@@ -913,9 +938,17 @@ clean_uninstall_all() {
             (cd "$target_dir" && $cmd down -v --remove-orphans 2>/dev/null || true)
         fi
         if command -v docker >/dev/null 2>&1; then
-            docker rm -f nezha-dashboard nezha-caddy caddy-ssl-test 2>/dev/null || true
-            docker volume rm -f nezha_caddy_data nezha_caddy_config 2>/dev/null || true
+            docker rm -f nezha-dashboard 2>/dev/null || true
             docker network rm nezha_internal_net 2>/dev/null || true
+        fi
+        rm -f "${CADDY_GATEWAY_DIR}/conf.d/nezha.caddy" 2>/dev/null || true
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "caddy-gateway"; then
+            docker exec caddy-gateway caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+            if [ -d "${CADDY_GATEWAY_DIR}/conf.d" ] && [ -z "$(ls -A "${CADDY_GATEWAY_DIR}/conf.d"/*.caddy 2>/dev/null)" ]; then
+                (cd "${CADDY_GATEWAY_DIR}" && (docker compose down -v 2>/dev/null || docker-compose down -v 2>/dev/null))
+                rm -rf "${CADDY_GATEWAY_DIR}" 2>/dev/null || true
+                docker network rm "${CADDY_GATEWAY_NET}" 2>/dev/null || true
+            fi
         fi
         if [ -d "$target_dir" ]; then
             rm -rf "$target_dir"
@@ -923,13 +956,12 @@ clean_uninstall_all() {
         fi
         rm -f /usr/local/bin/nezha 2>/dev/null || true
         log_ok "已移除全局 nezha 命令。"
-        echo -e "${GREEN}${BOLD}哪吒面板、Caddy 证书服务及所有数据已彻底卸载并清理完毕！${NC}"
+        echo -e "${GREEN}${BOLD}哪吒面板服务及所有数据已彻底卸载并清理完毕！${NC}"
     else
         log_info "已取消彻底卸载操作。"
     fi
 }
 
-# 交互式清理菜单
 cleanup_menu() {
     while true; do
         clear 2>/dev/null || true
@@ -940,7 +972,7 @@ cleanup_menu() {
         echo -e "${NC}"
         echo -e "${GREEN}${BOLD}  1.${NC} 清理 Docker 悬空镜像与构建缓存 (释放磁盘空间，不影响正在运行的服务)"
         echo -e "${GREEN}${BOLD}  2.${NC} 截断/清理 Docker 容器超大运行日志 (释放日志磁盘占用)"
-        echo -e "${YELLOW}${BOLD}  3.${NC} 停止并清理容器与虚拟网络 (保留面板数据和 SSL 证书配置)"
+        echo -e "${YELLOW}${BOLD}  3.${NC} 停止并清理容器实例 (保留面板数据和 SSL 证书配置)"
         echo -e "${RED}${BOLD}  4.${NC} 彻底卸载面板端与清理所有数据/证书 (危险操作，不可逆)"
         echo -e "  ----------------------------------------------------------------------------"
         echo -e "${BLUE}${BOLD}  0.${NC} 返回主菜单"
@@ -957,7 +989,6 @@ cleanup_menu() {
     done
 }
 
-# 完整安装流程
 do_install() {
     print_banner
     install_dependencies
@@ -970,17 +1001,16 @@ do_install() {
     print_success
 }
 
-# 交互式主菜单
 show_main_menu() {
     while true; do
         print_banner
         echo -e "${GREEN}${BOLD}  1.${NC} 安装 / 重新部署哪吒面板 (Install / Redeploy)"
-        echo -e "${GREEN}${BOLD}  2.${NC} 启动面板与 Caddy 服务 (Start Services)"
-        echo -e "${GREEN}${BOLD}  3.${NC} 停止面板与 Caddy 服务 (Stop Services)"
+        echo -e "${GREEN}${BOLD}  2.${NC} 启动面板服务 (Start Services)"
+        echo -e "${GREEN}${BOLD}  3.${NC} 停止面板服务 (Stop Services)"
         echo -e "${GREEN}${BOLD}  4.${NC} 重启所有容器服务 (Restart Services)"
         echo -e "${GREEN}${BOLD}  5.${NC} 查看运行状态与配置 (Status & Info)"
         echo -e "${GREEN}${BOLD}  6.${NC} 查看面板服务日志 (Panel Logs)"
-        echo -e "${GREEN}${BOLD}  7.${NC} 查看 Caddy 与 SSL 证书日志 (Caddy & SSL Logs)"
+        echo -e "${GREEN}${BOLD}  7.${NC} 查看 Caddy 网关与 SSL 证书日志 (Caddy & SSL Logs)"
         echo -e "${GREEN}${BOLD}  8.${NC} 平滑更新面板镜像版本 (Update Image)"
         echo -e "${YELLOW}${BOLD}  9.${NC} 系统清理与维护 (Docker 缓存清理 / 日志截断 / 卸载清理)"
         echo -e "  ----------------------------------------------------------------------------"
@@ -1003,7 +1033,6 @@ show_main_menu() {
     done
 }
 
-# 显示帮助信息
 show_usage() {
     echo -e "${BOLD}哪吒监控定制安全增强版 · 一键部署与管理脚本${NC}"
     echo "项目地址: https://github.com/opengaoling/nezha-panel"
@@ -1012,14 +1041,14 @@ show_usage() {
     echo ""
     echo "常用管理命令:"
     echo "  menu          显示交互式主菜单 (默认)"
-    echo "  install       安装或重新部署哪吒面板与 Caddy"
+    echo "  install       安装或重新部署哪吒面板"
     echo "  clean         进入系统清理与维护菜单 (清理 Docker 缓存/日志/彻底卸载)"
     echo "  status        查看服务运行状态"
-    echo "  start         启动面板与 Caddy 服务"
+    echo "  start         启动面板服务"
     echo "  stop          停止服务"
     echo "  restart       重启所有服务"
     echo "  logs          查看面板服务实时日志"
-    echo "  logs-caddy    查看 Caddy 与 SSL 证书申请日志"
+    echo "  logs-caddy    查看统一 Caddy 网关与 SSL 证书申请日志"
     echo "  update        拉取最新镜像平滑更新"
     echo "  info          查看当前配置与访问链接"
     echo "  uninstall     彻底卸载并清理全部数据与证书"
@@ -1035,7 +1064,6 @@ show_usage() {
     echo ""
 }
 
-# 解析命令行参数与子命令
 ACTION=""
 CLI_SPECIFIED_DOMAIN=""
 parse_args() {
@@ -1066,18 +1094,15 @@ parse_args() {
     done
 }
 
-# 脚本主执行入口
 main() {
     check_root
     parse_args "$@"
 
-    # 尝试预加载已有部署配置
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     if [ -f "$target_dir/.env" ]; then
         source "$target_dir/.env" 2>/dev/null || true
     fi
 
-    # 如果指定了具体子命令动作，直接执行
     if [ -n "$ACTION" ]; then
         case "$ACTION" in
             install) do_install ;;
@@ -1097,7 +1122,6 @@ main() {
         return
     fi
 
-    # 如果通过参数直接传入了域名或指定了自动确认，则直接开始安装
     if [ -n "$CLI_SPECIFIED_DOMAIN" ] || [ "$NON_INTERACTIVE" = "true" ]; then
         do_install
     else
