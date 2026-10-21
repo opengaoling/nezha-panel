@@ -77,12 +77,6 @@ services:
 docker compose up -d
 ```
 
-## ⚙️ 多项目共存说明
-
-本项目部署脚本已与 [Sub2API](https://github.com/opengaoling/sub2api-request-audit) 及 [New API](https://github.com/opengaoling/new-api) 完成兼容：
-- 独立服务命名（`nezha-dashboard`），无端口或容器名称冲突。
-- 自动接入宿主机共享 `caddy-gateway` 网络，多服务共享 80/443 端口自动申请 SSL 证书。
-
 ## 📄 License
 
 本项目基于原项目协议开源。
