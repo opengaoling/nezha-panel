@@ -221,6 +221,9 @@ networks:
 ### Q3: SSL 证书是如何自动续期的？
 > **解答**：`nezha-acme` 容器作为后台常驻守护进程，每天定时运行检查。证书到期前 30 天（或遵循 Let's Encrypt ARI 续期窗口）将自动通过 HTTP-01 Webroot 模式申请新证书，并自动向 Docker API 发送指令优雅重载 Nginx，整个过程对网站访问零中断。可随时运行 `nezha cert` 查看当前证书状态。
 
+### Q4: Agent 探针无法连接上线或频繁报客户端认证失败？
+> **解答**：哪吒探针使用带下划线的 HTTP/2 gRPC 元数据 Header（如 `client_secret` 与 `client_uuid`）向后端汇报与认证。Nginx 默认会把所有包含下划线的 Header 标记为非法并直接丢弃（`underscores_in_headers off`），导致后端无法获取认证凭据。本项目生成的 Nginx 配置已默认添加 `underscores_in_headers on;`，确保旧版与新版探针均可稳定鉴权秒级上线。
+
 ---
 
 ## 📄 开源许可 (License)

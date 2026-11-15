@@ -354,6 +354,7 @@ server {
     listen 80;
     listen [::]:80;
     server_name ${domain};
+    underscores_in_headers on;
 
     location /.well-known/acme-challenge/ {
         root /var/www/html;
@@ -371,6 +372,9 @@ server {
     listen [::]:443 ssl;
     http2 on;
     server_name ${domain};
+
+    # 允许包含下划线的 Header（解决 Agent 携带 client_secret、client_uuid 等下划线头部被 Nginx 丢弃导致无法认证上线的问题）
+    underscores_in_headers on;
 
     ssl_certificate     /etc/nginx/ssl/${domain}.crt;
     ssl_certificate_key /etc/nginx/ssl/${domain}.key;
