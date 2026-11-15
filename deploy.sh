@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 #=============================================================================
-# 🚀 哪吒监控定制安全增强版 · 一键部署脚本 (Nginx + acme.sh 自动申请与自动续期 SSL 证书)
+# 🚀 哪吒监控定制安全增强版 · 一键部署与管理脚本 (纯 Docker 化 Nginx + acme.sh 架构)
 # 项目地址: https://github.com/opengaoling/nezha-panel
 # 项目支持系统: Ubuntu / Debian / CentOS / AlmaLinux / Rocky / Fedora / Alpine
-# SSL 方案: Nginx 反向代理 + acme.sh 自动申请 Let's Encrypt 证书并自动续期 (cron)
+# 全容器化部署: Nezha Dashboard + Nginx (alpine) + acme.sh (自动申请与自动续期)
+# 彻底移除 Caddy，根除双 Go runtime 竞争导致的内存膨胀与 502 故障
 #=============================================================================
 
 # ANSI 颜色定义
@@ -17,14 +18,12 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.7.0"
+SCRIPT_VERSION="v2.8.0"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
-
-NGINX_CONF_DIR="/etc/nginx/conf.d"
-ACME_HOME="/root/.acme.sh"
-CERT_DIR="/etc/nginx/ssl"
+NGINX_IMAGE="nginx:alpine"
+ACME_IMAGE="neilpang/acme.sh:latest"
 
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_ok()   { echo -e "${GREEN}[ OK ]${NC} $1"; }
@@ -37,7 +36,7 @@ print_banner() {
     echo "============================================================================"
     echo "       🚀 哪吒监控定制安全增强版 · 一键部署脚本 (${SCRIPT_VERSION})       "
     echo "         基于 Nezha Monitoring · 全前置 WAF 防探测 · 8位安全路径隐匿         "
-    echo "       Nginx + acme.sh HTTPS: 自动申请 Let's Encrypt 证书并自动续期 (cron) "
+    echo "      全容器化架构: Docker Nginx + acme.sh 自动申请与自动续期 SSL 证书      "
     echo "============================================================================"
     echo -e "${NC}"
 }
@@ -56,9 +55,9 @@ generate_random_secret() {
 
 # 检查并安装基础依赖
 install_dependencies() {
-    log_info "正在检查基础运行依赖 (curl, tar, openssl, socat, cron)..."
+    log_info "正在检查基础运行依赖 (curl, tar, openssl, awk, sed)..."
     local need_install=""
-    for cmd in curl tar openssl awk sed socat; do
+    for cmd in curl tar openssl awk sed; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             need_install="$need_install $cmd"
         fi
@@ -67,7 +66,7 @@ install_dependencies() {
     if [ -n "$need_install" ]; then
         log_info "正在安装缺失的工具:$need_install"
         if command -v apt-get >/dev/null 2>&1; then
-            apt-get update -qq && apt-get install -y -qq $need_install
+            DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq $need_install
         elif command -v dnf >/dev/null 2>&1; then
             dnf install -y -q $need_install
         elif command -v yum >/dev/null 2>&1; then
@@ -76,67 +75,6 @@ install_dependencies() {
             apk add --no-cache $need_install
         fi
     fi
-
-    # 确保 cron 服务已安装并启动（acme.sh 续期依赖 cron）
-    local cron_svc=""
-    if command -v crontab >/dev/null 2>&1; then
-        cron_svc="ok"
-    fi
-    if [ -z "$cron_svc" ]; then
-        log_info "正在安装 cron 服务..."
-        if command -v apt-get >/dev/null 2>&1; then
-            apt-get install -y -qq cron
-            systemctl enable --now cron 2>/dev/null || service cron start 2>/dev/null || true
-        elif command -v dnf >/dev/null 2>&1; then
-            dnf install -y -q cronie
-            systemctl enable --now crond 2>/dev/null || true
-        elif command -v yum >/dev/null 2>&1; then
-            yum install -y -q cronie
-            systemctl enable --now crond 2>/dev/null || true
-        elif command -v apk >/dev/null 2>&1; then
-            apk add --no-cache dcron
-            rc-update add dcron default 2>/dev/null || true
-            rc-service dcron start 2>/dev/null || true
-        fi
-    fi
-}
-
-# 检查并安装 Nginx
-install_nginx() {
-    if ! command -v nginx >/dev/null 2>&1; then
-        log_info "未检测到 Nginx，正在安装..."
-        if command -v apt-get >/dev/null 2>&1; then
-            apt-get update -qq && apt-get install -y -qq nginx
-        elif command -v dnf >/dev/null 2>&1; then
-            dnf install -y -q nginx
-        elif command -v yum >/dev/null 2>&1; then
-            yum install -y -q nginx
-        elif command -v apk >/dev/null 2>&1; then
-            apk add --no-cache nginx
-        else
-            log_err "无法自动安装 Nginx，请手动安装后重试。"
-            exit 1
-        fi
-        systemctl enable nginx 2>/dev/null || true
-    fi
-    log_ok "Nginx 已就绪 ($(nginx -v 2>&1 | head -n1))"
-}
-
-# 检查并安装 acme.sh
-install_acme() {
-    if [ ! -f "${ACME_HOME}/acme.sh" ]; then
-        log_info "正在安装 acme.sh (Let's Encrypt 自动证书管理工具)..."
-        local email_flag=""
-        [ -n "$INPUT_EMAIL" ] && email_flag="--email ${INPUT_EMAIL}"
-        curl -fsSL https://get.acme.sh | sh -s -- $email_flag
-        # shellcheck source=/dev/null
-        source "${ACME_HOME}/acme.sh.env" 2>/dev/null || true
-        log_ok "acme.sh 安装完成！"
-    else
-        log_ok "acme.sh 已存在，跳过安装。"
-    fi
-    # 升级到最新版
-    "${ACME_HOME}/acme.sh" --upgrade --auto-upgrade 2>/dev/null || true
 }
 
 # 检查并安装 Docker 与 Docker Compose
@@ -147,7 +85,6 @@ check_install_docker() {
         systemctl enable --now docker 2>/dev/null || service docker start 2>/dev/null || true
     fi
 
-    # 检查 docker compose 命令兼容性
     local has_compose=false
     if docker compose version >/dev/null 2>&1; then
         has_compose=true
@@ -160,7 +97,7 @@ check_install_docker() {
     if [ "$has_compose" != "true" ]; then
         log_info "正在配置 Docker Compose 插件..."
         if command -v apt-get >/dev/null 2>&1; then
-            apt-get update -qq && apt-get install -y -qq docker-compose-v2 || apt-get install -y -qq docker-compose-plugin || true
+            DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq docker-compose-v2 || apt-get install -y -qq docker-compose-plugin || true
         elif command -v dnf >/dev/null 2>&1; then
             dnf install -y -q docker-compose-plugin || true
         elif command -v yum >/dev/null 2>&1; then
@@ -212,12 +149,12 @@ gather_user_input() {
         fi
     done
 
-    # 2. 邮箱配置 (用于 Let's Encrypt 证书申请，建议填写)
+    # 2. 邮箱配置 (可选，用于证书通知)
     if [ -z "$EMAIL" ]; then
         if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
             INPUT_EMAIL=""
         else
-            read -r -p "👉 请输入联系邮箱 (用于 acme.sh 申请证书与续期通知，建议填写，回车跳过): " INPUT_EMAIL
+            read -r -p "👉 请输入联系邮箱 (用于 acme.sh 证书通知，建议填写，回车跳过): " INPUT_EMAIL
             INPUT_EMAIL="$(echo "$INPUT_EMAIL" | tr -d ' ')"
         fi
     else
@@ -279,11 +216,11 @@ gather_user_input() {
     echo ""
     log_info "配置确认清单:"
     echo "  - 绑定域名:     ${GREEN}${INPUT_DOMAIN}${NC}"
-    echo "  - 证书通知邮箱: ${GREEN}${INPUT_EMAIL:-未设置 (acme.sh 仍可申请，但建议填写)}${NC}"
+    echo "  - 证书通知邮箱: ${GREEN}${INPUT_EMAIL:-未设置 (acme.sh 自动注册)}${NC}"
     echo "  - 内部通信端口: ${GREEN}${INPUT_PORT}${NC}"
     echo "  - 8位安全路径:  ${GREEN}${INPUT_SECRET}${NC}"
     echo "  - 安装目录:     ${GREEN}${INPUT_DIR}${NC}"
-    echo "  - 证书方案:     ${GREEN}Nginx 反向代理 + acme.sh 自动申请/续期 Let's Encrypt 证书${NC}"
+    echo "  - 架构方案:     ${GREEN}纯 Docker 化 Nginx + acme.sh (零宿主机软件依赖，轻量安全)${NC}"
     echo ""
     if [ "$NON_INTERACTIVE" != "true" ] && [ "$NON_INTERACTIVE" != "1" ]; then
         read -r -p "确认以上配置并开始部署? [Y/n]: " confirm
@@ -294,26 +231,37 @@ gather_user_input() {
     fi
 }
 
-# 检查端口占用 (80, 443, $INPUT_PORT)
+# 清理历史 Caddy 容器并检查端口
 check_ports() {
-    log_info "正在检查端口占用情况 (80, 443, ${INPUT_PORT})..."
+    log_info "正在清理历史 Caddy 容器并检查端口占用情况 (80, 443, ${INPUT_PORT})..."
 
-    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nezha-dashboard.service 2>/dev/null; then
-        log_warn "检测到宿主机正在运行原生 nezha-dashboard.service 服务。"
-        read -r -p "是否停止原生服务以便无缝切换至 Docker Compose 统一管理？[Y/n]: " stop_systemd
-        if [[ ! "$stop_systemd" =~ ^[nN]$ ]]; then
-            systemctl stop nezha-dashboard.service 2>/dev/null || true
-            systemctl disable nezha-dashboard.service 2>/dev/null || true
-            log_ok "已停止并禁用原生 nezha-dashboard.service。"
+    # 清理所有历史 Caddy 容器
+    for old_caddy in nezha-caddy caddy-gateway caddy-ssl-test; do
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$old_caddy"; then
+            log_info "清理历史 Caddy 容器: $old_caddy ..."
+            docker rm -f "$old_caddy" >/dev/null 2>&1 || true
         fi
+    done
+    docker rmi caddy:2.8.4-alpine 2>/dev/null || true
+
+    # 停止宿主机原生 nginx 服务（如果被 apt 启动占用了 80/443 端口）
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nginx 2>/dev/null; then
+        log_info "停止宿主机原生 Nginx 以便让 Docker 版 Nginx 绑定 80/443 端口..."
+        systemctl stop nginx 2>/dev/null || true
+        systemctl disable nginx 2>/dev/null || true
+    fi
+
+    # 检查原生 nezha-dashboard.service
+    if command -v systemctl >/dev/null 2>&1 && systemctl is-active --quiet nezha-dashboard.service 2>/dev/null; then
+        systemctl stop nezha-dashboard.service 2>/dev/null || true
+        systemctl disable nezha-dashboard.service 2>/dev/null || true
     fi
 
     local conflict=false
     for p in 80 443; do
         if ss -tuln 2>/dev/null | grep -q ":$p " || netstat -tuln 2>/dev/null | grep -q ":$p "; then
-            # 检查是否是 nginx 自己占用（重新部署场景）
-            if nginx -t 2>/dev/null && systemctl is-active --quiet nginx 2>/dev/null; then
-                log_ok "端口 $p 已由 Nginx 监听 (本服务复用，将热重载配置)。"
+            if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "nezha-nginx"; then
+                log_ok "端口 $p 已由 Docker nezha-nginx 监听 (部署将平滑更新)。"
             else
                 log_warn "端口 $p 已被其他程序占用，请确认是否继续。"
                 conflict=true
@@ -323,11 +271,10 @@ check_ports() {
 
     local p="$INPUT_PORT"
     if ss -tuln 2>/dev/null | grep -q ":$p " || netstat -tuln 2>/dev/null | grep -q ":$p "; then
-        if [ -d "$INPUT_DIR" ] && [ -f "$INPUT_DIR/docker-compose.yaml" ]; then
-            log_warn "检测到通信端口 $p 已在使用，正在检查是否为本服务..."
+        if docker ps --format '{{.Names}}' 2>/dev/null | grep -qx "nezha-dashboard"; then
+            log_ok "通信端口 $p 正在由本服务 nezha-dashboard 使用。"
         else
-            log_err "通信端口 $p 已被其他程序占用，请修改端口或停止占用程序后再试。"
-            conflict=true
+            log_warn "通信端口 $p 已被其他程序占用。"
         fi
     fi
 
@@ -363,101 +310,27 @@ open_firewall_ports() {
     fi
 }
 
-# 申请 SSL 证书 (acme.sh)
-issue_ssl_cert() {
-    mkdir -p "${CERT_DIR}"
+# 生成 Nginx 配置文件
+generate_nginx_conf() {
+    local target_dir="$1"
+    local domain="$2"
+    local secret="$3"
+    local port="$4"
+    local secret_lower
+    secret_lower="$(echo "$secret" | tr '[:upper:]' '[:lower:]')"
 
-    local cert_path="${CERT_DIR}/${INPUT_DOMAIN}.crt"
-    local key_path="${CERT_DIR}/${INPUT_DOMAIN}.key"
-
-    # 如果证书已存在且有效，跳过申请
-    if [ -f "$cert_path" ] && [ -f "$key_path" ]; then
-        # 检查证书是否在 30 天内过期
-        if openssl x509 -checkend $((30 * 86400)) -noout -in "$cert_path" 2>/dev/null; then
-            log_ok "SSL 证书已存在且有效期超过 30 天，跳过申请。"
-            return 0
-        fi
-        log_info "SSL 证书即将到期，正在重新申请..."
-    fi
-
-    log_info "正在通过 acme.sh 申请 Let's Encrypt SSL 证书 (域名: ${INPUT_DOMAIN})..."
-    log_info "⚠️  申请前请确保域名 ${INPUT_DOMAIN} 已正确解析到本服务器 IP，且 80 端口可访问。"
-
-    # 停止 nginx 临时释放 80 端口用于 standalone 模式验证
-    local nginx_was_running=false
-    if systemctl is-active --quiet nginx 2>/dev/null; then
-        nginx_was_running=true
-        systemctl stop nginx 2>/dev/null || true
-    fi
-
-    local email_flag=""
-    [ -n "$INPUT_EMAIL" ] && email_flag="--email ${INPUT_EMAIL}"
-
-    # 使用 standalone 模式申请证书
-    "${ACME_HOME}/acme.sh" --issue \
-        --standalone \
-        -d "${INPUT_DOMAIN}" \
-        ${email_flag} \
-        --key-length 2048 \
-        --force 2>&1 || {
-        log_warn "standalone 模式申请失败，尝试 webroot 模式..."
-        # 恢复 nginx 以便 webroot 模式
-        "$nginx_was_running" && systemctl start nginx 2>/dev/null || true
-        nginx -t >/dev/null 2>&1 && nginx -s reload 2>/dev/null || systemctl start nginx 2>/dev/null || true
-        mkdir -p /var/www/html/.well-known/acme-challenge
-        "${ACME_HOME}/acme.sh" --issue \
-            --webroot /var/www/html \
-            -d "${INPUT_DOMAIN}" \
-            ${email_flag} \
-            --key-length 2048 \
-            --force 2>&1 || {
-            log_err "证书申请失败！请检查域名解析是否正确，80 端口是否可访问。"
-            log_err "可手动重试: ${ACME_HOME}/acme.sh --issue --standalone -d ${INPUT_DOMAIN} --force"
-            # 恢复 nginx
-            "$nginx_was_running" && systemctl start nginx 2>/dev/null || true
-            return 1
-        }
-    }
-
-    # 安装证书到目标路径，并配置自动重载 Nginx 的钩子
-    "${ACME_HOME}/acme.sh" --install-cert \
-        -d "${INPUT_DOMAIN}" \
-        --cert-file "${cert_path}" \
-        --key-file "${key_path}" \
-        --fullchain-file "${cert_path}" \
-        --reloadcmd "systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true"
-
-    log_ok "SSL 证书已成功申请并安装到 ${CERT_DIR}/"
-    log_ok "acme.sh 已自动配置 cron 任务，证书将在到期前自动续期！"
-
-    # 恢复 nginx
-    if "$nginx_was_running"; then
-        systemctl start nginx 2>/dev/null || true
-    fi
-}
-
-# 写入 Nginx 配置
-write_nginx_config() {
-    local cert_path="${CERT_DIR}/${INPUT_DOMAIN}.crt"
-    local key_path="${CERT_DIR}/${INPUT_DOMAIN}.key"
-
-    mkdir -p "${NGINX_CONF_DIR}"
-
-    log_info "正在写入 Nginx 站点配置: ${NGINX_CONF_DIR}/nezha.conf"
-    cat > "${NGINX_CONF_DIR}/nezha.conf" <<EOF
+    cat > "${target_dir}/nginx.conf" <<EOF
 # =============================================================================
-# 哪吒监控安全增强版 · Nginx HTTPS 反向代理配置
-# SSL 证书由 acme.sh 自动申请与续期 (Let's Encrypt)
-# 生成时间: $(date '+%Y-%m-%d %H:%M:%S')
+# 哪吒监控定制安全增强版 · Docker Nginx HTTPS 反向代理配置
+# SSL 证书由 Docker acme.sh 自动申请与自动续期
 # =============================================================================
 
-# HTTP → HTTPS 强制跳转
+# HTTP 重定向与 acme.sh 验证路径
 server {
     listen 80;
     listen [::]:80;
-    server_name ${INPUT_DOMAIN};
+    server_name ${domain};
 
-    # acme.sh webroot 续期验证路径
     location /.well-known/acme-challenge/ {
         root /var/www/html;
         try_files \$uri =404;
@@ -473,36 +346,24 @@ server {
     listen 443 ssl;
     listen [::]:443 ssl;
     http2 on;
-    server_name ${INPUT_DOMAIN};
+    server_name ${domain};
 
-    ssl_certificate     ${cert_path};
-    ssl_certificate_key ${key_path};
+    ssl_certificate     /etc/nginx/ssl/${domain}.crt;
+    ssl_certificate_key /etc/nginx/ssl/${domain}.key;
 
-    # 现代 TLS 安全配置
     ssl_protocols TLSv1.2 TLSv1.3;
     ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256;
     ssl_prefer_server_ciphers off;
     ssl_session_cache shared:SSL:10m;
     ssl_session_timeout 1d;
     ssl_session_tickets off;
-    ssl_stapling on;
-    ssl_stapling_verify on;
-    resolver 8.8.8.8 1.1.1.1 valid=300s;
-    resolver_timeout 5s;
 
-    # HSTS (慎用，启用后 1 年内必须 HTTPS)
-    # add_header Strict-Transport-Security "max-age=63072000" always;
-
-    # 通用安全头
     add_header X-Frame-Options SAMEORIGIN always;
     add_header X-Content-Type-Options nosniff always;
     add_header X-XSS-Protection "1; mode=block" always;
-
-    # 防缓存头
     add_header Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0" always;
     add_header Pragma "no-cache" always;
 
-    # Nginx 连接优化（防止后端积压导致 502）
     proxy_connect_timeout       10s;
     proxy_send_timeout          120s;
     proxy_read_timeout          120s;
@@ -510,46 +371,40 @@ server {
     proxy_buffer_size           8k;
     proxy_http_version          1.1;
 
-    # gRPC Agent 心跳流 (Content-Type: application/grpc*)
+    # gRPC Agent 监控心跳流
     location /proto.NezhaService/ {
-        grpc_pass grpc://127.0.0.1:${INPUT_PORT};
+        grpc_pass grpc://nezha-dashboard:${port};
         grpc_set_header Host \$host;
         grpc_set_header X-Real-IP \$remote_addr;
         grpc_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         grpc_read_timeout 86400s;
         grpc_send_timeout 86400s;
-        # 解决 Nginx 长连接 gRPC 流内存泄漏
         grpc_buffer_size 32k;
     }
 
-    # 安全路径前缀访问 (大小写均支持)
-    location ~* ^/(${INPUT_SECRET}|$(echo "${INPUT_SECRET}" | tr '[:upper:]' '[:lower:]'))(/.*)?$ {
-        proxy_pass http://127.0.0.1:${INPUT_PORT};
+    # 安全路径前缀
+    location ~* ^/(${secret}|${secret_lower})(/.*)?$ {
+        proxy_pass http://nezha-dashboard:${port};
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Secret-Path ${INPUT_SECRET};
+        proxy_set_header X-Secret-Path ${secret};
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
-        # 防止后端响应慢时累积 502
-        proxy_next_upstream error timeout invalid_header http_502 http_503 http_504;
-        proxy_next_upstream_tries 2;
-        proxy_next_upstream_timeout 5s;
     }
 
-    # Cookie/Header 鉴权的白名单路径
+    # 白名单静态资源与接口鉴权
     location ~ ^/(assets/|api/|terminal|favicon\.ico|manifest\.json|robots\.txt) {
-        # 验证 nz-secret-path cookie 或 X-Secret-Path header
         set \$auth_ok 0;
-        if (\$cookie_nz_secret_path = "${INPUT_SECRET}") { set \$auth_ok 1; }
-        if (\$http_x_secret_path = "${INPUT_SECRET}") { set \$auth_ok 1; }
-        # PAT 鉴权 (Bearer nzp_...)
+        if (\$cookie_nz_secret_path = "${secret}") { set \$auth_ok 1; }
+        if (\$cookie_gw_secret_path = "${secret}") { set \$auth_ok 1; }
+        if (\$http_x_secret_path = "${secret}") { set \$auth_ok 1; }
         if (\$http_authorization ~* "^Bearer nzp_") { set \$auth_ok 1; }
 
         if (\$auth_ok = 0) { return 404; }
 
-        proxy_pass http://127.0.0.1:${INPUT_PORT};
+        proxy_pass http://nezha-dashboard:${port};
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
@@ -558,83 +413,176 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # 其他路径一律 404（防探测）
     location / {
         return 404;
     }
-
-    # Nginx 日志
-    access_log /var/log/nginx/nezha.access.log;
-    error_log  /var/log/nginx/nezha.error.log;
 }
 EOF
-
-    # 确保 webroot 目录存在
-    mkdir -p /var/www/html/.well-known/acme-challenge
-
-    # 检查 nginx 配置语法
-    if nginx -t >/dev/null 2>&1; then
-        log_ok "Nginx 配置语法检查通过！"
-    else
-        log_err "Nginx 配置语法错误，请检查以下输出："
-        nginx -t
-        return 1
-    fi
 }
 
-# 重载 Nginx
-reload_nginx() {
-    if systemctl is-active --quiet nginx 2>/dev/null; then
-        nginx -t >/dev/null 2>&1 && systemctl reload nginx && log_ok "Nginx 配置已热重载。" || {
-            log_warn "reload 失败，尝试 restart..."
-            systemctl restart nginx
-        }
-    else
-        systemctl start nginx && log_ok "Nginx 已启动。"
-    fi
-}
+# 生成 docker-compose.yaml 文件
+generate_compose_yaml() {
+    local target_dir="$1"
+    local port="$2"
+    local secret="$3"
 
-# 写入部署配置文件
-write_configs() {
-    log_info "正在初始化部署目录: $INPUT_DIR"
-    mkdir -p "$INPUT_DIR" "$INPUT_DIR/data"
-    cd "$INPUT_DIR"
-
-    # 写入 docker-compose.yaml (仅监听 loopback，由宿主机 Nginx 反代)
-    log_info "正在生成 docker-compose.yaml 文件..."
-    cat > "$INPUT_DIR/docker-compose.yaml" <<EOF
+    cat > "${target_dir}/docker-compose.yaml" <<EOF
 services:
   nezha-dashboard:
     image: ${DOCKER_IMAGE}
     container_name: nezha-dashboard
     restart: always
-    # 仅绑定宿主机 loopback，由 Nginx 反向代理接入，避免直接暴露端口
     ports:
-      - "127.0.0.1:${INPUT_PORT}:${INPUT_PORT}"
+      - "${port}:${port}"
     environment:
       - TZ=Asia/Shanghai
-      - NEZHA_SECRET_PATH=${INPUT_SECRET}
-      # Go 运行时内存限制，防止内存无上限增长导致 OOM/502
+      - NEZHA_SECRET_PATH=${secret}
       - GOMEMLIMIT=512MiB
     volumes:
       - ./data:/dashboard/data
-    # 容器资源限制，防止内存持续增加拖垮宿主机
     deploy:
       resources:
         limits:
           memory: 600m
         reservations:
           memory: 128m
-    # 健康检查，容器不健康时自动重启
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:${INPUT_PORT}/"]
+      test: ["CMD", "/dashboard/app", "-v"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 10s
+    networks:
+      - nezha-net
 
-networks: {}
+  nginx:
+    image: ${NGINX_IMAGE}
+    container_name: nezha-nginx
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+      - ./acme-challenge:/var/www/html/.well-known/acme-challenge:ro
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    depends_on:
+      - nezha-dashboard
+    networks:
+      - nezha-net
+
+  acme:
+    image: ${ACME_IMAGE}
+    container_name: nezha-acme
+    restart: always
+    environment:
+      - TZ=Asia/Shanghai
+    volumes:
+      - ./acme-data:/acme.sh
+      - ./ssl:/ssl
+      - ./acme-challenge:/var/www/html/.well-known/acme-challenge
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: /bin/sh -c 'which docker >/dev/null 2>&1 || apk add --no-cache docker-cli >/dev/null 2>&1; trap exit TERM; while :; do /usr/local/bin/acme.sh --cron --home /acme.sh; sleep 86400; done'
+    networks:
+      - nezha-net
+
+networks:
+  nezha-net:
+    name: nezha_internal_net
+    driver: bridge
 EOF
+}
+
+# 证书准备与申请
+prepare_and_issue_ssl() {
+    local target_dir="$1"
+    local domain="$2"
+    local email="$3"
+
+    mkdir -p "${target_dir}/ssl" "${target_dir}/acme-challenge" "${target_dir}/acme-data"
+
+    local cert_file="${target_dir}/ssl/${domain}.crt"
+    local key_file="${target_dir}/ssl/${domain}.key"
+
+    # 1. 尝试从旧 Caddy 数据卷迁移已有证书
+    if [ ! -f "$cert_file" ] || [ ! -f "$key_file" ]; then
+        if [ -d "/var/lib/docker/volumes/nezha_caddy_data" ]; then
+            log_info "发现历史 Caddy 证书卷，正在平滑迁移至 Nginx SSL 目录..."
+            local caddy_crt
+            caddy_crt="$(find /var/lib/docker/volumes/nezha_caddy_data -name "${domain}.crt" 2>/dev/null | head -n1)"
+            local caddy_key
+            caddy_key="$(find /var/lib/docker/volumes/nezha_caddy_data -name "${domain}.key" 2>/dev/null | head -n1)"
+            if [ -n "$caddy_crt" ] && [ -n "$caddy_key" ]; then
+                cp "$caddy_crt" "$cert_file"
+                cp "$caddy_key" "$key_file"
+                chmod 600 "$key_file"
+                log_ok "成功迁移历史证书！"
+            fi
+        fi
+    fi
+
+    # 2. 如果没有有效证书，则临时启动自签名证书供 Nginx 启动，再通过 acme.sh 签发
+    if [ ! -f "$cert_file" ] || [ ! -f "$key_file" ]; then
+        log_info "生成临时启动证书以引导 Nginx 容器..."
+        openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+            -keyout "$key_file" \
+            -out "$cert_file" \
+            -subj "/CN=${domain}" >/dev/null 2>&1 || true
+    fi
+
+    # 3. 启动容器集群以开启 HTTP 80 Webroot
+    log_info "启动基础容器集群进行 Webroot ACME 验证..."
+    local compose_cmd="$(get_compose_cmd)"
+    (cd "$target_dir" && ($compose_cmd pull nginx acme nezha-dashboard || true) && $compose_cmd up -d --remove-orphans)
+
+    # 4. 如果没有被 acme.sh 管理，则通过 acme.sh 执行签发并配置 reload 钩子
+    if ! docker exec nezha-acme /usr/local/bin/acme.sh --list 2>/dev/null | grep -q "$domain"; then
+        log_info "正在通过 acme.sh 自动申请 Let's Encrypt SSL 证书 (域名: ${domain})..."
+        [ -n "$email" ] && docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" >/dev/null 2>&1 || true
+
+        docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+            -d "${domain}" \
+            -w /var/www/html \
+            --server letsencrypt 2>&1 || {
+            log_warn "Let's Encrypt 签发遇到问题，尝试使用 ZeroSSL 引擎..."
+            docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+                -d "${domain}" \
+                -w /var/www/html 2>&1 || true
+        }
+
+        # 安装证书并绑定自动 reload 钩子
+        docker exec nezha-acme apk add --no-cache docker-cli >/dev/null 2>&1 || true
+        docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
+            -d "${domain}" \
+            --ecc \
+            --key-file "/ssl/${domain}.key" \
+            --fullchain-file "/ssl/${domain}.crt" \
+            --reloadcmd "docker exec nezha-nginx nginx -s reload" 2>&1 || {
+            docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
+                -d "${domain}" \
+                --key-file "/ssl/${domain}.key" \
+                --fullchain-file "/ssl/${domain}.crt" \
+                --reloadcmd "docker exec nezha-nginx nginx -s reload" 2>&1 || true
+        }
+        docker exec nezha-nginx nginx -s reload 2>/dev/null || true
+    fi
+}
+
+# 写入部署配置文件
+write_configs() {
+    log_info "正在初始化部署目录: $INPUT_DIR"
+    mkdir -p "$INPUT_DIR" "$INPUT_DIR/data" "$INPUT_DIR/ssl" "$INPUT_DIR/acme-challenge" "$INPUT_DIR/acme-data"
+    cd "$INPUT_DIR"
+
+    # 生成 Nginx 配置
+    generate_nginx_conf "$INPUT_DIR" "$INPUT_DOMAIN" "$INPUT_SECRET" "$INPUT_PORT"
+
+    # 生成 docker-compose.yaml
+    generate_compose_yaml "$INPUT_DIR" "$INPUT_PORT" "$INPUT_SECRET"
 
     # 写入环境配置备忘 .env
     cat > "$INPUT_DIR/.env" <<EOF
@@ -645,11 +593,11 @@ SECRET_PATH=${INPUT_SECRET}
 INSTALL_DIR=${INPUT_DIR}
 EOF
 
-    # 创建便捷管理命令 nezha
+    # 写入全局管理工具 nezha.sh
     cat > "$INPUT_DIR/nezha.sh" << 'NEZHA_SH_EOF'
 #!/usr/bin/env bash
-# Nezha Dashboard Management Tool (Nginx + acme.sh Edition)
-VERSION="v2.7.0"
+# Nezha Dashboard Management Tool (Docker Nginx + acme.sh Edition)
+VERSION="v2.8.0"
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -667,9 +615,6 @@ else
     CMD="docker-compose"
 fi
 
-ACME_HOME="/root/.acme.sh"
-CERT_DIR="/etc/nginx/ssl"
-
 press_any_key() {
     echo ""
     read -r -p "按回车键继续..." dummy
@@ -679,6 +624,7 @@ clean_docker_cache() {
     echo "正在清理 Docker 悬空镜像及未使用的构建缓存..."
     docker image prune -f
     docker builder prune -f 2>/dev/null || true
+    docker rmi caddy:2.8.4-alpine 2>/dev/null || true
     echo "Docker 镜像与构建缓存清理完毕！"
 }
 
@@ -698,15 +644,8 @@ clean_container_logs() {
     fi
 }
 
-clean_nginx_logs() {
-    echo "正在清理 Nginx 访问与错误日志..."
-    truncate -s 0 /var/log/nginx/nezha.access.log 2>/dev/null || true
-    truncate -s 0 /var/log/nginx/nezha.error.log 2>/dev/null || true
-    echo "Nginx 日志清理完毕！"
-}
-
 clean_containers_keep_data() {
-    echo "此操作将停止并移除面板容器，但保留数据目录和证书！"
+    echo "此操作将停止并移除所有面板容器，但保留数据目录和证书！"
     read -r -p "确认清理容器与网络环境? [y/N]: " confirm_c
     if [[ "$confirm_c" =~ ^[yY]$ ]]; then
         echo "正在停止容器..."
@@ -717,18 +656,12 @@ clean_containers_keep_data() {
 }
 
 clean_uninstall_all() {
-    echo "⚠️  高危警告：此操作将彻底删除哪吒面板容器、Nginx 配置以及所有数据库与配置数据！"
+    echo "⚠️  高危警告：此操作将彻底删除哪吒面板容器、网络以及所有数据库与配置数据！"
     read -r -p "此操作不可逆，请确认是否继续？请输入 'yes' 确认: " confirm_clean
     if [ "$confirm_clean" = "yes" ] || [ "$confirm_clean" = "YES" ]; then
         echo "正在彻底卸载与清理..."
         $CMD down -v --remove-orphans 2>/dev/null || true
-        # 读取 .env 获取域名
-        source "$BASE_DIR/.env" 2>/dev/null || true
-        # 移除 Nginx 配置并重载
-        rm -f /etc/nginx/conf.d/nezha.conf 2>/dev/null || true
-        systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
-        # 移除 acme.sh 证书（可选，不删除证书以防共享域名）
-        # "${ACME_HOME}/acme.sh" --remove -d "${DOMAIN}" 2>/dev/null || true
+        docker rm -f nezha-dashboard nezha-nginx nezha-acme nezha-caddy 2>/dev/null || true
         rm -f /usr/local/bin/nezha 2>/dev/null || true
         cd /
         rm -rf "$BASE_DIR"
@@ -747,19 +680,17 @@ cleanup_menu() {
         echo "============================================================================"
         echo "  1. 清理 Docker 悬空镜像与构建缓存 (释放磁盘空间，不影响正在运行的服务)"
         echo "  2. 截断/清理 Docker 容器超大运行日志 (释放日志磁盘占用)"
-        echo "  3. 清理 Nginx 访问与错误日志"
-        echo "  4. 停止并清理容器 (保留面板数据和 SSL 证书配置)"
-        echo "  5. 彻底卸载面板端与清理所有数据/证书 (危险操作，不可逆)"
+        echo "  3. 停止并清理容器 (保留面板数据和 SSL 证书配置)"
+        echo "  4. 彻底卸载面板端与清理所有数据/证书 (危险操作，不可逆)"
         echo "  ----------------------------------------------------------------------------"
         echo "  0. 返回主菜单"
         echo ""
-        read -r -p "👉 请输入清理选择 [0-5]: " clean_choice
+        read -r -p "👉 请输入清理选择 [0-4]: " clean_choice
         case "$clean_choice" in
             1) clean_docker_cache; press_any_key ;;
             2) clean_container_logs; press_any_key ;;
-            3) clean_nginx_logs; press_any_key ;;
-            4) clean_containers_keep_data; press_any_key ;;
-            5) clean_uninstall_all; press_any_key; break ;;
+            3) clean_containers_keep_data; press_any_key ;;
+            4) clean_uninstall_all; press_any_key; break ;;
             0|b|B|q|Q) break ;;
             *) echo "无效输入，请重新选择。"; sleep 1 ;;
         esac
@@ -778,36 +709,35 @@ show_info() {
     echo "默认管理密码: admin (首次进入后台请立即修改)"
     echo "通信端口:     ${PORT}"
     echo "安装目录:     ${BASE_DIR}"
-    echo "证书管理机制: acme.sh 自动申请 Let's Encrypt 证书并通过 cron 自动续期"
-    echo "证书目录:     ${CERT_DIR}/${DOMAIN}.crt"
-    echo "续期检查命令: ${ACME_HOME}/acme.sh --renew -d ${DOMAIN} --force"
+    echo "网关架构:     Docker Nginx (alpine, 极低内存)"
+    echo "证书续期:     Docker acme.sh 容器后台自动守护续期"
+    echo "证书文件:     ${BASE_DIR}/ssl/${DOMAIN}.crt"
     echo "============================================================================"
 }
 
 show_cert_info() {
     source "$BASE_DIR/.env" 2>/dev/null || true
-    local cert_file="${CERT_DIR}/${DOMAIN}.crt"
+    local cert_file="${BASE_DIR}/ssl/${DOMAIN}.crt"
     echo "============================================================================"
     echo "                      🔒 SSL 证书状态信息                      "
     echo "============================================================================"
     if [ -f "$cert_file" ]; then
         echo "证书路径: $cert_file"
-        echo "证书信息:"
         openssl x509 -in "$cert_file" -noout -subject -dates -issuer 2>/dev/null || echo "无法读取证书信息"
         echo ""
-        echo "证书剩余有效期:"
         local expiry
         expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d= -f2)
-        echo "  到期时间: $expiry"
-        if openssl x509 -checkend $((7 * 86400)) -noout -in "$cert_file" 2>/dev/null; then
-            echo "  状态: ✅ 有效（距到期超过 7 天）"
+        echo "到期时间: $expiry"
+        if openssl x509 -checkend $((15 * 86400)) -noout -in "$cert_file" 2>/dev/null; then
+            echo "状态: ✅ 正常有效（距到期超过 15 天）"
         else
-            echo "  状态: ⚠️  证书将在 7 天内过期，请尽快续期！"
-            echo "  手动续期命令: ${ACME_HOME}/acme.sh --renew -d ${DOMAIN} --force"
+            echo "状态: ⚠️  证书将在 15 天内到期，后台 acme.sh 将自动续签。"
         fi
+        echo ""
+        echo "=== acme.sh 容器内证书注册列表 ==="
+        docker exec nezha-acme /usr/local/bin/acme.sh --list 2>/dev/null || true
     else
-        echo "证书文件不存在: $cert_file"
-        echo "请使用 deploy.sh 重新申请证书。"
+        echo "未检测到证书文件: $cert_file"
     fi
     echo "============================================================================"
 }
@@ -816,7 +746,7 @@ show_menu() {
     while true; do
         clear 2>/dev/null || true
         echo "============================================================================"
-        echo "   🚀 哪吒监控定制安全增强版 · 管理控制台 (${VERSION}, Nginx+acme.sh)   "
+        echo "  🚀 哪吒监控定制安全增强版 · 管理控制台 (${VERSION}, Docker Nginx+acme)  "
         echo "============================================================================"
         echo "  1. 查看服务运行状态 (Status)"
         echo "  2. 启动服务 (Start)"
@@ -824,28 +754,28 @@ show_menu() {
         echo "  4. 重启所有容器服务 (Restart)"
         echo "  5. 查看部署配置信息 (Info)"
         echo "  6. 查看面板服务日志 (Panel Logs)"
-        echo "  7. 查看 Nginx 访问日志 (Nginx Access Logs)"
-        echo "  8. 查看 Nginx 错误日志 (Nginx Error Logs)"
-        echo "  9. 查看 SSL 证书状态 (SSL Cert Info)"
-        echo "  a. 平滑更新面板镜像 (Update)"
-        echo "  b. 重载 Nginx 配置 (Reload Nginx)"
+        echo "  7. 查看 Nginx 网关日志 (Nginx Logs)"
+        echo "  8. 查看 acme.sh 续期日志 (acme.sh Logs)"
+        echo "  9. 平滑更新面板镜像 (Update)"
+        echo "  a. 查看 SSL 证书状态 (SSL Cert Info)"
+        echo "  b. 重新加载 Nginx 配置 (Reload Nginx)"
         echo "  c. 系统清理与维护 (Docker 缓存清理 / 日志截断 / 彻底卸载)"
         echo "  ----------------------------------------------------------------------------"
         echo "  0. 退出管理控制台"
         echo ""
         read -r -p "👉 请输入选择 [0-9/a-c]: " choice
         case "$choice" in
-            1) echo "=== 服务运行状态 ==="; $CMD ps; echo ""; echo "=== Nginx 状态 ==="; systemctl status nginx --no-pager -l 2>/dev/null | head -20; press_any_key ;;
-            2) echo "正在启动服务..."; $CMD up -d; systemctl start nginx 2>/dev/null || true; press_any_key ;;
+            1) echo "=== 容器运行状态 ==="; $CMD ps; press_any_key ;;
+            2) echo "正在启动服务..."; $CMD up -d; press_any_key ;;
             3) echo "正在停止服务..."; $CMD stop; press_any_key ;;
-            4) echo "正在重启所有容器..."; $CMD restart; systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true; press_any_key ;;
+            4) echo "正在重启所有容器..."; $CMD restart; press_any_key ;;
             5) show_info; press_any_key ;;
             6) $CMD logs -f nezha-dashboard ;;
-            7) echo "查看 Nginx 访问日志 (Ctrl+C 退出)..."; tail -f /var/log/nginx/nezha.access.log ;;
-            8) echo "查看 Nginx 错误日志 (Ctrl+C 退出)..."; tail -f /var/log/nginx/nezha.error.log ;;
-            9) show_cert_info; press_any_key ;;
-            a|A) echo "正在拉取最新镜像并更新..."; $CMD pull && $CMD up -d --force-recreate --remove-orphans; press_any_key ;;
-            b|B) echo "正在重载 Nginx 配置..."; nginx -t && (systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null) && echo "✅ Nginx 重载成功！"; press_any_key ;;
+            7) $CMD logs -f nginx ;;
+            8) $CMD logs -f acme ;;
+            9) echo "正在平滑更新镜像..."; $CMD pull && $CMD up -d --remove-orphans; press_any_key ;;
+            a|A) show_cert_info; press_any_key ;;
+            b|B) docker exec nezha-nginx nginx -s reload && echo "✅ Nginx 重载成功！"; press_any_key ;;
             c|C) cleanup_menu ;;
             0|q|Q) echo "已退出。"; exit 0 ;;
             *) echo "无效输入，请重新选择。"; sleep 1 ;;
@@ -855,16 +785,12 @@ show_menu() {
 
 case "$1" in
     status)
-        echo "=== 服务运行状态 ==="
+        echo "=== 容器运行状态 ==="
         $CMD ps
-        echo ""
-        echo "=== Nginx 状态 ==="
-        systemctl status nginx --no-pager -l 2>/dev/null | head -20
         ;;
     restart)
         echo "正在重启所有容器..."
         $CMD restart
-        systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
         ;;
     stop)
         echo "正在停止服务..."
@@ -873,27 +799,24 @@ case "$1" in
     start)
         echo "正在启动服务..."
         $CMD up -d
-        systemctl start nginx 2>/dev/null || true
         ;;
     logs)
         $CMD logs -f nezha-dashboard
         ;;
-    logs-nginx|logs-ssl)
-        echo "=== Nginx 访问日志 (Ctrl+C 退出) ==="
-        tail -f /var/log/nginx/nezha.access.log
+    logs-nginx)
+        $CMD logs -f nginx
         ;;
-    logs-nginx-error)
-        echo "=== Nginx 错误日志 (Ctrl+C 退出) ==="
-        tail -f /var/log/nginx/nezha.error.log
+    logs-acme)
+        $CMD logs -f acme
         ;;
     update)
         echo "正在拉取最新镜像并平滑更新..."
         $CMD pull
-        $CMD up -d --force-recreate --remove-orphans
+        $CMD up -d --remove-orphans
         echo "更新完毕！"
         ;;
     reload-nginx)
-        nginx -t && (systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null) && echo "✅ Nginx 重载成功！"
+        docker exec nezha-nginx nginx -s reload && echo "✅ Nginx 重载成功！"
         ;;
     cert)
         show_cert_info
@@ -914,7 +837,7 @@ case "$1" in
         show_menu
         ;;
     *)
-        echo "用法: $0 {menu|status|start|stop|restart|logs|logs-nginx|logs-nginx-error|reload-nginx|cert|update|info|clean|uninstall|version}"
+        echo "用法: $0 {menu|status|start|stop|restart|logs|logs-nginx|logs-acme|update|reload-nginx|cert|info|clean|uninstall|version}"
         exit 1
         ;;
 esac
@@ -923,25 +846,46 @@ NEZHA_SH_EOF
     ln -sf "$INPUT_DIR/nezha.sh" /usr/local/bin/nezha 2>/dev/null || true
 }
 
-# 启动服务
-start_services() {
-    log_info "正在拉取最新容器镜像并启动服务..."
-    cd "$INPUT_DIR"
-    $COMPOSE_CMD pull || true
-    $COMPOSE_CMD up -d --force-recreate --remove-orphans
-
-    # 重载/启动 Nginx
-    reload_nginx
-
-    log_info "等待服务启动与初始化..."
-    sleep 5
-
-    local running_cnt="$($COMPOSE_CMD ps --status running 2>/dev/null | grep -E "nezha-dashboard" | wc -l)"
-    if [ "$running_cnt" -ge 1 ]; then
-        log_ok "哪吒监控面板容器已成功启动！"
-    else
-        log_warn "容器启动中，请使用 '$COMPOSE_CMD ps' 查看容器实时状态。"
+# 平滑更新现有面板部署 (自动迁移老旧 Caddy 配置为 Nginx + acme.sh)
+service_update() {
+    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    if [ ! -d "$target_dir" ] || [ ! -f "$target_dir/.env" ]; then
+        log_warn "未在 $target_dir 找到已有部署配置，请先运行安装选项。"
+        return
     fi
+    source "$target_dir/.env" 2>/dev/null || true
+    local cmd="$(get_compose_cmd)"
+
+    log_info "正在检测并升级配置架构 (移除 Caddy，迁移为 Docker Nginx + acme.sh)..."
+    docker rm -f nezha-caddy caddy-gateway 2>/dev/null || true
+    docker rmi caddy:2.8.4-alpine 2>/dev/null || true
+
+    mkdir -p "${target_dir}/ssl" "${target_dir}/acme-challenge" "${target_dir}/acme-data"
+    generate_nginx_conf "$target_dir" "$DOMAIN" "$SECRET_PATH" "$PORT"
+    generate_compose_yaml "$target_dir" "$PORT" "$SECRET_PATH"
+
+    prepare_and_issue_ssl "$target_dir" "$DOMAIN" "$EMAIL"
+
+    log_info "正在拉取最新容器镜像并启动服务..."
+    (cd "$target_dir" && $cmd pull && $cmd up -d --remove-orphans)
+
+    # 尝试重载 Nginx
+    docker exec nezha-nginx nginx -s reload >/dev/null 2>&1 || true
+
+    log_ok "面板已平滑更新至最新 Docker Nginx + acme.sh 架构！"
+}
+
+# 执行全量安装
+do_install() {
+    print_banner
+    install_dependencies
+    check_install_docker
+    gather_user_input
+    check_ports
+    open_firewall_ports
+    write_configs
+    prepare_and_issue_ssl "$INPUT_DIR" "$INPUT_DOMAIN" "$INPUT_EMAIL"
+    print_success
 }
 
 # 显示最终部署成功信息
@@ -961,30 +905,20 @@ print_success() {
     echo -e "  🔑 ${BOLD}初始管理员密码${NC}:   ${YELLOW}admin${NC} ${RED}(首次登录后请务必立即修改！)${NC}"
     echo ""
     echo -e "  🔒 ${BOLD}SSL 证书状态${NC}:"
-    echo -e "     - ${GREEN}acme.sh 已成功申请 Let's Encrypt 证书${NC}"
-    echo -e "     - ${GREEN}已自动配置 cron 任务定期续期${NC}（证书到期前 30 天自动续签）"
-    echo -e "     - 证书路径: ${CERT_DIR}/${INPUT_DOMAIN}.crt"
+    echo -e "     - ${GREEN}acme.sh 已签发 Let's Encrypt 证书${NC}"
+    echo -e "     - ${GREEN}后台 acme 容器每日自动检测续期${NC}，证书到期前自动热更新并重载 Nginx"
     echo ""
-    echo -e "  🛡️  ${BOLD}内存优化说明${NC}:"
-    echo -e "     - ${GREEN}已配置 Docker 容器内存限制 600MB${NC}，防止 OOM 导致 502"
-    echo -e "     - ${GREEN}已设置 GOMEMLIMIT=512MiB${NC}，Go GC 更激进释放内存"
-    echo -e "     - ${GREEN}已添加容器健康检查${NC}，不健康时自动重启"
+    echo -e "  🛡️  ${BOLD}内存优化特性${NC}:"
+    echo -e "     - ${GREEN}纯 Docker Nginx 网关${NC}：内存常驻仅 ~6MB，彻底替代 Caddy"
+    echo -e "     - ${GREEN}面板软硬内存限制${NC}：GOMEMLIMIT=512MiB + Docker limit 600m，防止 502 崩溃"
+    echo -e "     - ${GREEN}自动内存回收${NC}：Go GC 阈值降至 20%，每 6 小时自动向操作系统退还物理内存"
     echo ""
-    echo -e "  🖥️  ${BOLD}被控端（Agent）接入命令${NC}:"
-    echo -e "     ${YELLOW}curl -L https://raw.githubusercontent.com/nezhahq/scripts/main/agent/install.sh -o nezha.sh && chmod +x nezha.sh${NC}"
-    echo -e "     ${YELLOW}./nezha.sh install_agent ${INPUT_DOMAIN} ${INPUT_PORT} <你的Agent密钥>${NC}"
-    echo ""
-    echo -e "  🛠️  ${BOLD}常用管理命令（已全局注册 nezha 命令）${NC}:"
-    echo -e "     - 管理主控制台:         ${CYAN}nezha${NC}"
-    echo -e "     - 查看运行状态:         ${CYAN}nezha status${NC}"
-    echo -e "     - 查看 Nginx 访问日志:  ${CYAN}nezha logs-nginx${NC}"
-    echo -e "     - 查看面板服务日志:     ${CYAN}nezha logs${NC}"
-    echo -e "     - 重启所有服务:         ${CYAN}nezha restart${NC}"
-    echo -e "     - 重载 Nginx 配置:      ${CYAN}nezha reload-nginx${NC}"
-    echo -e "     - 查看 SSL 证书状态:    ${CYAN}nezha cert${NC}"
-    echo -e "     - 平滑更新版本:         ${CYAN}nezha update${NC}"
-    echo -e "     - 查看当前配置信息:     ${CYAN}nezha info${NC}"
-    echo -e "     - 系统清理与维护:       ${CYAN}nezha clean${NC}"
+    echo -e "  🛠️  ${BOLD}常用管理命令（已注册 nezha 全局命令）${NC}:"
+    echo -e "     - 管理控制台:     ${CYAN}nezha${NC}"
+    echo -e "     - 查看运行状态:   ${CYAN}nezha status${NC}"
+    echo -e "     - 查看 Nginx 日志:${CYAN}nezha logs-nginx${NC}"
+    echo -e "     - 查看证书状态:   ${CYAN}nezha cert${NC}"
+    echo -e "     - 平滑更新镜像:   ${CYAN}nezha update${NC}"
     echo ""
     echo -e "${GREEN}============================================================================${NC}"
 }
@@ -1012,11 +946,8 @@ service_status() {
         return
     fi
     local cmd="$(get_compose_cmd)"
-    echo "=== 服务运行状态 ($target_dir) ==="
+    echo "=== 容器运行状态 ($target_dir) ==="
     (cd "$target_dir" && $cmd ps)
-    echo ""
-    echo "=== Nginx 状态 ==="
-    systemctl status nginx --no-pager -l 2>/dev/null | head -20
 }
 
 service_start() {
@@ -1024,7 +955,6 @@ service_start() {
     local cmd="$(get_compose_cmd)"
     log_info "正在启动面板服务..."
     (cd "$target_dir" && $cmd up -d)
-    reload_nginx
     log_ok "服务已启动。"
 }
 
@@ -1041,7 +971,6 @@ service_restart() {
     local cmd="$(get_compose_cmd)"
     log_info "正在重启所有容器..."
     (cd "$target_dir" && $cmd restart)
-    reload_nginx
     log_ok "所有服务已重启完成。"
 }
 
@@ -1053,17 +982,47 @@ service_logs() {
 }
 
 service_logs_nginx() {
-    echo "正在查看 Nginx 访问日志 (按 Ctrl+C 退出)..."
-    tail -f /var/log/nginx/nezha.access.log 2>/dev/null || log_warn "Nginx 访问日志文件不存在。"
-}
-
-service_update() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     local cmd="$(get_compose_cmd)"
-    log_info "正在拉取最新镜像并平滑更新..."
-    (cd "$target_dir" && $cmd pull && $cmd up -d --remove-orphans)
-    reload_nginx
-    log_ok "面板更新完成！"
+    echo "正在查看 Nginx 日志 (按 Ctrl+C 退出)..."
+    (cd "$target_dir" && $cmd logs -f nginx)
+}
+
+service_logs_acme() {
+    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    local cmd="$(get_compose_cmd)"
+    echo "正在查看 acme.sh 续期日志 (按 Ctrl+C 退出)..."
+    (cd "$target_dir" && $cmd logs -f acme)
+}
+
+service_cert() {
+    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    if [ -f "$target_dir/.env" ]; then
+        source "$target_dir/.env" 2>/dev/null || true
+    fi
+    local cert_file="${target_dir}/ssl/${DOMAIN}.crt"
+    echo "============================================================================"
+    echo "                      🔒 SSL 证书状态信息                      "
+    echo "============================================================================"
+    if [ -f "$cert_file" ]; then
+        echo "证书路径: $cert_file"
+        openssl x509 -in "$cert_file" -noout -subject -dates -issuer 2>/dev/null || echo "无法读取证书信息"
+        echo ""
+        local expiry
+        expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d= -f2)
+        echo "到期时间: $expiry"
+        if openssl x509 -checkend $((15 * 86400)) -noout -in "$cert_file" 2>/dev/null; then
+            echo "状态: ✅ 正常有效（距到期超过 15 天）"
+        else
+            echo "状态: ⚠️  证书将在 15 天内到期，后台 acme.sh 将自动续签。"
+        fi
+        echo ""
+        echo "=== acme.sh 容器内证书注册列表 ==="
+        docker exec nezha-acme /usr/local/bin/acme.sh --list 2>/dev/null || true
+    else
+        echo "未检测到证书文件: $cert_file"
+    fi
+    echo "============================================================================"
 }
 
 service_info() {
@@ -1082,153 +1041,10 @@ service_info() {
     echo -e "  - 默认管理密码: ${YELLOW}admin (首次进入后台请立即修改)${NC}"
     echo -e "  - 通信端口:     ${GREEN}${PORT}${NC}"
     echo -e "  - 安装目录:     ${GREEN}${INSTALL_DIR:-$target_dir}${NC}"
-    echo -e "  - 证书管理机制: ${GREEN}acme.sh 自动申请 Let's Encrypt 证书，cron 定期自动续期${NC}"
+    echo -e "  - 容器网关:     ${GREEN}Docker Nginx (alpine)${NC}"
+    echo -e "  - 证书守护:     ${GREEN}Docker acme.sh (自动续期)${NC}"
     echo -e "${CYAN}${BOLD}============================================================================${NC}"
     echo ""
-}
-
-clean_docker_cache() {
-    log_info "正在清理 Docker 悬空镜像及未使用的构建缓存..."
-    if command -v docker >/dev/null 2>&1; then
-        docker image prune -f
-        docker builder prune -f 2>/dev/null || true
-        log_ok "Docker 悬空镜像与构建缓存清理完毕！"
-    else
-        log_warn "未检测到 Docker。"
-    fi
-}
-
-clean_container_logs() {
-    log_info "正在扫描并截断清理 Docker 容器日志文件..."
-    local cleaned=0
-    if [ -d "/var/lib/docker/containers" ]; then
-        for log_file in $(find /var/lib/docker/containers/ -name "*-json.log" 2>/dev/null); do
-            if [ -f "$log_file" ]; then
-                truncate -s 0 "$log_file" 2>/dev/null || true
-                cleaned=$((cleaned + 1))
-            fi
-        done
-        log_ok "已成功截断清空 $cleaned 个 Docker 容器日志文件，释放磁盘空间！"
-    else
-        log_info "未发现 /var/lib/docker/containers 目录。"
-    fi
-}
-
-clean_containers_keep_data() {
-    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-    local cmd="$(get_compose_cmd)"
-    if [ -d "$target_dir" ] && [ -f "$target_dir/docker-compose.yaml" ]; then
-        log_warn "此操作将停止并移除面板容器，但会完整保留数据目录和 SSL 证书！"
-        read -r -p "确认清理容器与网络环境? [y/N]: " confirm_clean_c
-        if [[ "$confirm_clean_c" =~ ^[yY]$ ]]; then
-            log_info "正在停止容器..."
-            (cd "$target_dir" && $cmd down --remove-orphans 2>/dev/null || true)
-            log_ok "容器与虚拟网络已清理完毕，数据目录 ($target_dir/data) 和 SSL 证书依然完整保留。"
-            log_info "如需重新启动服务，只需执行: nezha start 或 $0 start"
-        else
-            log_info "已取消清理容器操作。"
-        fi
-    else
-        log_warn "未找到已部署的 compose 目录: $target_dir"
-    fi
-}
-
-clean_uninstall_all() {
-    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
-    local cmd="$(get_compose_cmd)"
-    echo ""
-    echo -e "${RED}${BOLD}============================================================================${NC}"
-    echo -e "${RED}${BOLD}  ⚠️  高危警告：彻底卸载与完全清除操作                                        ${NC}"
-    echo -e "${RED}${BOLD}============================================================================${NC}"
-    echo -e "${RED}此操作将："
-    echo -e "  1. 彻底停止并删除哪吒面板容器实例"
-    echo -e "  2. 删除 Nginx 站点配置 (/etc/nginx/conf.d/nezha.conf)"
-    echo -e "  3. 彻底删除安装目录 (${target_dir}) 及其所有数据库和配置数据！"
-    echo -e "  4. 移除全局快捷管理命令 /usr/local/bin/nezha"
-    echo -e "  注意: SSL 证书文件保留在 ${CERT_DIR}/ 中（如需清理请手动删除）"
-    echo -e "${NC}"
-    read -r -p "此操作不可逆，请确认是否彻底卸载并清理全部数据？请输入 'yes' 确认: " confirm_clean
-    if [ "$confirm_clean" = "yes" ] || [ "$confirm_clean" = "YES" ]; then
-        log_info "正在彻底卸载与清理..."
-        if [ -d "$target_dir" ] && [ -f "$target_dir/docker-compose.yaml" ]; then
-            (cd "$target_dir" && $cmd down -v --remove-orphans 2>/dev/null || true)
-        fi
-        if command -v docker >/dev/null 2>&1; then
-            docker rm -f nezha-dashboard 2>/dev/null || true
-        fi
-        rm -f "/etc/nginx/conf.d/nezha.conf" 2>/dev/null || true
-        systemctl reload nginx 2>/dev/null || nginx -s reload 2>/dev/null || true
-        if [ -d "$target_dir" ]; then
-            rm -rf "$target_dir"
-            log_ok "已清除安装目录: $target_dir"
-        fi
-        rm -f /usr/local/bin/nezha 2>/dev/null || true
-        log_ok "已移除全局 nezha 命令。"
-        echo -e "${GREEN}${BOLD}哪吒面板服务及所有数据已彻底卸载并清理完毕！${NC}"
-    else
-        log_info "已取消彻底卸载操作。"
-    fi
-}
-
-cleanup_menu() {
-    while true; do
-        clear 2>/dev/null || true
-        echo -e "${CYAN}${BOLD}"
-        echo "============================================================================"
-        echo "                      🧹 哪吒监控 · 系统清理与维护菜单                      "
-        echo "============================================================================"
-        echo -e "${NC}"
-        echo -e "${GREEN}${BOLD}  1.${NC} 清理 Docker 悬空镜像与构建缓存 (释放磁盘空间，不影响正在运行的服务)"
-        echo -e "${GREEN}${BOLD}  2.${NC} 截断/清理 Docker 容器超大运行日志 (释放日志磁盘占用)"
-        echo -e "${YELLOW}${BOLD}  3.${NC} 停止并清理容器实例 (保留面板数据和 SSL 证书配置)"
-        echo -e "${RED}${BOLD}  4.${NC} 彻底卸载面板端与清理所有数据/证书 (危险操作，不可逆)"
-        echo -e "  ----------------------------------------------------------------------------"
-        echo -e "${BLUE}${BOLD}  0.${NC} 返回主菜单"
-        echo ""
-        read -r -p "👉 请输入清理选项 [0-4]: " clean_choice
-        case "$clean_choice" in
-            1) clean_docker_cache; press_any_key ;;
-            2) clean_container_logs; press_any_key ;;
-            3) clean_containers_keep_data; press_any_key ;;
-            4) clean_uninstall_all; press_any_key; break ;;
-            0|b|B|q|Q) break ;;
-            *) log_warn "无效输入，请重新选择。"; sleep 1 ;;
-        esac
-    done
-}
-
-do_install() {
-    print_banner
-    install_dependencies
-    install_nginx
-    check_install_docker
-    gather_user_input
-    check_ports
-    open_firewall_ports
-    install_acme
-    # 先写 nginx HTTP-only 配置（用于 webroot 验证），再申请证书，再写完整 HTTPS 配置
-    log_info "正在写入临时 Nginx 配置以支持 acme.sh webroot 验证..."
-    mkdir -p "${NGINX_CONF_DIR}" /var/www/html/.well-known/acme-challenge
-    cat > "${NGINX_CONF_DIR}/nezha.conf" <<TMPEOF
-server {
-    listen 80;
-    server_name ${INPUT_DOMAIN};
-    location /.well-known/acme-challenge/ {
-        root /var/www/html;
-        try_files \$uri =404;
-    }
-    location / { return 200 "nginx ok"; }
-}
-TMPEOF
-    nginx -t >/dev/null 2>&1 && reload_nginx
-    # 申请证书
-    issue_ssl_cert
-    # 写入完整配置
-    write_nginx_config
-    write_configs
-    reload_nginx
-    start_services
-    print_success
 }
 
 show_main_menu() {
@@ -1240,9 +1056,9 @@ show_main_menu() {
         echo -e "${GREEN}${BOLD}  4.${NC} 重启所有容器服务 (Restart Services)"
         echo -e "${GREEN}${BOLD}  5.${NC} 查看运行状态与配置 (Status & Info)"
         echo -e "${GREEN}${BOLD}  6.${NC} 查看面板服务日志 (Panel Logs)"
-        echo -e "${GREEN}${BOLD}  7.${NC} 查看 Nginx 访问日志 (Nginx Logs)"
-        echo -e "${GREEN}${BOLD}  8.${NC} 平滑更新面板镜像版本 (Update Image)"
-        echo -e "${GREEN}${BOLD}  9.${NC} 查看 SSL 证书状态 (SSL Cert Status)"
+        echo -e "${GREEN}${BOLD}  7.${NC} 查看 Nginx 网关日志 (Nginx Logs)"
+        echo -e "${GREEN}${BOLD}  8.${NC} 查看 acme.sh 续期日志 (acme.sh Logs)"
+        echo -e "${GREEN}${BOLD}  9.${NC} 平滑更新面板镜像版本 (Update Image)"
         echo -e "${YELLOW}${BOLD}  c.${NC} 系统清理与维护 (Docker 缓存清理 / 日志截断 / 卸载清理)"
         echo -e "  ----------------------------------------------------------------------------"
         echo -e "${RED}${BOLD}  0.${NC} 退出脚本"
@@ -1256,11 +1072,9 @@ show_main_menu() {
             5) service_info; service_status; press_any_key ;;
             6) service_logs ;;
             7) service_logs_nginx ;;
-            8) service_update; press_any_key ;;
-            9) source "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/.env" 2>/dev/null || true
-               openssl x509 -in "${CERT_DIR}/${DOMAIN}.crt" -noout -subject -dates -issuer 2>/dev/null || echo "证书不存在或无法读取"
-               press_any_key ;;
-            c|C) cleanup_menu ;;
+            8) service_logs_acme ;;
+            9) service_update; press_any_key ;;
+            c|C) source "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/nezha.sh" 2>/dev/null && cleanup_menu || echo "请先安装面板。" ;;
             0|q|Q) echo "退出脚本。"; exit 0 ;;
             *) log_warn "无效输入，请重新选择。"; sleep 1 ;;
         esac
@@ -1268,7 +1082,7 @@ show_main_menu() {
 }
 
 show_usage() {
-    echo -e "${BOLD}哪吒监控定制安全增强版 · 一键部署与管理脚本 (Nginx + acme.sh)${NC}"
+    echo -e "${BOLD}哪吒监控定制安全增强版 · 一键部署与管理脚本 (Docker Nginx + acme.sh)${NC}"
     echo "项目地址: https://github.com/opengaoling/nezha-panel"
     echo ""
     echo "用法: $0 [命令|选项]"
@@ -1276,25 +1090,16 @@ show_usage() {
     echo "常用管理命令:"
     echo "  menu          显示交互式主菜单 (默认)"
     echo "  install       安装或重新部署哪吒面板"
-    echo "  clean         进入系统清理与维护菜单 (清理 Docker 缓存/日志/彻底卸载)"
-    echo "  status        查看服务运行状态"
-    echo "  start         启动面板服务"
-    echo "  stop          停止服务"
-    echo "  restart       重启所有服务"
-    echo "  logs          查看面板服务实时日志"
-    echo "  logs-nginx    查看 Nginx 访问日志"
-    echo "  update        拉取最新镜像平滑更新"
+    echo "  update        平滑升级至 Docker Nginx + acme.sh 架构并拉取最新镜像"
+    echo "  status        查看所有容器运行状态"
+    echo "  start         启动面板所有容器"
+    echo "  stop          停止面板所有容器"
+    echo "  restart       重启所有容器"
+    echo "  logs          查看面板服务日志"
+    echo "  logs-nginx    查看 Nginx 网关访问日志"
+    echo "  logs-acme     查看 acme.sh 证书续期日志"
     echo "  info          查看当前配置与访问链接"
     echo "  uninstall     彻底卸载并清理全部数据与证书"
-    echo ""
-    echo "配置选项 (用于自动化/非交互部署):"
-    echo "  -d, --domain <domain>   绑定域名"
-    echo "  -e, --email <email>     证书通知邮箱 (acme.sh 申请证书时使用)"
-    echo "  -p, --port <port>       内部通信端口 (默认: 2052)"
-    echo "  -s, --secret <secret>   8位英文字母安全路径"
-    echo "  --dir <path>            安装目录 (默认: /opt/nezha-dashboard)"
-    echo "  -y, --yes               非交互自动确认模式"
-    echo "  -h, --help              查看帮助信息"
     echo ""
 }
 
@@ -1316,7 +1121,9 @@ parse_args() {
             stop) ACTION="stop"; shift ;;
             restart) ACTION="restart"; shift ;;
             logs) ACTION="logs"; shift ;;
-            logs-nginx|logs-ssl) ACTION="logs-nginx"; shift ;;
+            logs-nginx) ACTION="logs-nginx"; shift ;;
+            logs-acme) ACTION="logs-acme"; shift ;;
+            cert) ACTION="cert"; shift ;;
             update) ACTION="update"; shift ;;
             info) ACTION="info"; shift ;;
             uninstall) ACTION="uninstall"; shift ;;
@@ -1340,16 +1147,18 @@ main() {
     if [ -n "$ACTION" ]; then
         case "$ACTION" in
             install) do_install ;;
-            clean) cleanup_menu ;;
+            clean) source "$target_dir/nezha.sh" 2>/dev/null && cleanup_menu ;;
             status) service_status ;;
             start) service_start ;;
             stop) service_stop ;;
             restart) service_restart ;;
             logs) service_logs ;;
             logs-nginx) service_logs_nginx ;;
+            logs-acme) service_logs_acme ;;
+            cert) service_cert ;;
             update) service_update ;;
             info) service_info ;;
-            uninstall) clean_uninstall_all ;;
+            uninstall) source "$target_dir/nezha.sh" 2>/dev/null && clean_uninstall_all ;;
             menu) show_main_menu ;;
             *) show_main_menu ;;
         esac
