@@ -33,6 +33,12 @@
 - 内置高质感毛玻璃（Frosted Glass）UI，支持自动跟随系统的深色/浅色模式切换。
 - 支持桌面端/移动端自适应布局、自定义服务器分组过滤、实时 WebSocket 心跳监控。
 
+### 5. 🐶 每日看门狗自动更新守护 (GHCR Watchdog)
+- **纯定时静默校验**：内置系统级计划任务（每日 04:30 自动执行），静默拉取 `ghcr.io/opengaoling/nezha-panel:latest` 镜像。
+- **SHA256 哈希精准比对**：通过 Docker Inspect 获取并对比运行容器与远端最新镜像的实际 SHA256 ID，仅在镜像确实发生更新变动时触发平滑更新。
+- **零中断平滑重建**：使用 `--force-recreate --no-deps` 仅平滑重建 `nezha-dashboard` 面板容器，前端 Nginx 接入层与 SSL 证书守护服务完全不受影响。
+- **自动镜像缓存清理**：容器重建后自动执行 `docker image prune -f` 释放失效的悬空镜像层，防止主机磁盘堆积。
+
 ---
 
 ## 📊 架构对比：旧版 Caddy vs 新版 Nginx + acme.sh
@@ -111,17 +117,22 @@ bash <(curl -fsSL https://raw.githubusercontent.com/opengaoling/nezha-panel/mast
 nezha
 
 # 常用快捷子命令
-nezha status       # 查看所有容器 (dashboard / nginx / acme) 运行状态与内存
-nezha restart      # 重启所有容器服务
-nezha update       # 平滑升级至最新镜像版本并应用配置
-nezha cert         # 查看 SSL 证书有效期与签发详情
-nezha logs         # 实时跟踪面板 Go 服务日志
-nezha logs-nginx   # 查看 Nginx 访问与反向代理日志
-nezha logs-acme    # 查看 acme.sh 证书续期守护日志
-nezha info         # 查看当前配置备忘与完整访问链接
-nezha vacuum       # 压缩整理 SQLite 数据库碎片 (回收已删除数据物理磁盘空间)
-nezha clean        # 进入系统维护与清理菜单 (清理 Docker 缓存/截断大日志/数据库维护)
-nezha uninstall    # 彻底卸载面板服务与清理数据
+nezha status           # 查看所有容器 (dashboard / nginx / acme) 运行状态与内存
+nezha restart          # 重启所有容器服务
+nezha update           # 手动平滑拉取最新镜像并重建容器
+nezha watchdog status  # 查看看门狗每日自动更新配置状态与最近更新日志
+nezha watchdog run     # 立即触发一次看门狗 SHA256 对比检查与平滑更新
+nezha watchdog enable  # 启用每日定时看门狗更新 (默认每天 04:30 自动执行)
+nezha watchdog disable # 停用每日定时更新计划任务
+nezha watchdog logs    # 实时查看/跟踪看门狗运行日志 (/var/log/nezha-watchdog.log)
+nezha cert             # 查看 SSL 证书有效期与签发详情
+nezha logs             # 实时跟踪面板 Go 服务日志
+nezha logs-nginx       # 查看 Nginx 访问与反向代理日志
+nezha logs-acme        # 查看 acme.sh 证书续期守护日志
+nezha info             # 查看当前配置备忘与完整访问链接
+nezha vacuum           # 压缩整理 SQLite 数据库碎片 (回收已删除数据物理磁盘空间)
+nezha clean            # 进入系统维护与清理菜单 (清理 Docker 缓存/截断大日志/数据库维护)
+nezha uninstall        # 彻底卸载面板服务与清理数据
 ```
 
 ---
@@ -228,6 +239,11 @@ networks:
 ### Q5: 为什么以前 sqlite.db 会越来越大？本版如何彻底解决？
 > **解答**：在未开启时序库的传统模式下，所有服务探测打点（Ping / TCP / HTTP）均以明文行直接写入 SQLite 的 `service_histories` 表且无滚动淘汰机制；加之 SQLite 自身执行 `DELETE` 后不向操作系统退还物理磁盘页的特性，导致文件持续膨胀到数十兆。
 > 本项目部署脚本**默认开启内置高性能 TSDB 时序存储**（`data/tsdb`，自动 30 天滚动清理淘汰），面板启动时自动清空 SQLite 中的旧监控历史，配合每周日自动维护及 `nezha vacuum` 一键压缩命令，使 `sqlite.db` 永久保持在 ~300KB 轻量级。
+
+### Q6: 看门狗自动更新是如何工作的？会不会影响网站访问？
+> **解答**：看门狗脚本（`/opt/nezha-dashboard/watchdog.sh`）通过系统 cron 每日（默认 04:30）执行一次。它首先静默拉取 `ghcr.io/opengaoling/nezha-panel:latest` 镜像，并对比当前运行容器与远端最新镜像的实际 SHA256 镜像 ID。
+> - 若 SHA256 相同，表明当前已是最新版，直接结束，不做任何操作；
+> - 若 SHA256 发生变动，使用 `docker compose up -d --force-recreate --no-deps nezha-dashboard` 平滑重建面板容器，同时保留并完全不触动前端 Nginx 网关与 acme.sh 续期服务，并在完成后自动运行 `docker image prune -f` 释放旧镜像缓存。整个过程仅面板容器毫秒级平滑重启，外部访问与 SSL 保持零中断。
 
 ---
 
