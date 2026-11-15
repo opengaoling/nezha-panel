@@ -213,12 +213,36 @@ gather_user_input() {
         INPUT_DIR="$INSTALL_DIR"
     fi
 
+    # 6. Agent 通信密钥 (方便旧探针直接上线)
+    local existing_agent_key=""
+    if [ -f "$INPUT_DIR/data/config.yaml" ]; then
+        existing_agent_key="$(grep -E '^agent_secret_key:' "$INPUT_DIR/data/config.yaml" | awk '{print $2}' | tr -d ' "\r\n')"
+    fi
+
+    if [ -z "$AGENT_KEY" ]; then
+        if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
+            INPUT_AGENT_KEY="$existing_agent_key"
+        else
+            if [ -n "$existing_agent_key" ]; then
+                read -r -p "👉 检测到已有 Agent 通信密钥 (${existing_agent_key})，回车沿用或输入新密钥: " INPUT_AGENT_KEY
+                INPUT_AGENT_KEY="$(echo "$INPUT_AGENT_KEY" | tr -d ' ')"
+                [ -z "$INPUT_AGENT_KEY" ] && INPUT_AGENT_KEY="$existing_agent_key"
+            else
+                read -r -p "👉 是否指定旧的 Agent 通信密钥 (方便旧探针无缝上线，回车自动随机生成): " INPUT_AGENT_KEY
+                INPUT_AGENT_KEY="$(echo "$INPUT_AGENT_KEY" | tr -d ' ')"
+            fi
+        fi
+    else
+        INPUT_AGENT_KEY="$AGENT_KEY"
+    fi
+
     echo ""
     log_info "配置确认清单:"
     echo "  - 绑定域名:     ${GREEN}${INPUT_DOMAIN}${NC}"
     echo "  - 证书通知邮箱: ${GREEN}${INPUT_EMAIL:-未设置 (acme.sh 自动注册)}${NC}"
     echo "  - 内部通信端口: ${GREEN}${INPUT_PORT}${NC}"
     echo "  - 8位安全路径:  ${GREEN}${INPUT_SECRET}${NC}"
+    echo "  - Agent通信密钥: ${GREEN}${INPUT_AGENT_KEY:-系统自动生成随机密钥}${NC}"
     echo "  - 安装目录:     ${GREEN}${INPUT_DIR}${NC}"
     echo "  - 架构方案:     ${GREEN}纯 Docker 化 Nginx + acme.sh (零宿主机软件依赖，轻量安全)${NC}"
     echo ""
@@ -576,12 +600,30 @@ write_configs() {
     # 生成 docker-compose.yaml
     generate_compose_yaml "$INPUT_DIR" "$INPUT_PORT" "$INPUT_SECRET"
 
+    # 如果指定了 Agent 通信密钥，写入或预置到 data/config.yaml
+    if [ -n "$INPUT_AGENT_KEY" ]; then
+        local config_file="$INPUT_DIR/data/config.yaml"
+        if [ -f "$config_file" ]; then
+            if grep -qE '^agent_secret_key:' "$config_file"; then
+                sed -i -E "s/^(agent_secret_key:).*/\1 ${INPUT_AGENT_KEY}/" "$config_file"
+            else
+                echo "agent_secret_key: ${INPUT_AGENT_KEY}" >> "$config_file"
+            fi
+        else
+            cat > "$config_file" <<EOF
+agent_secret_key: ${INPUT_AGENT_KEY}
+EOF
+        fi
+        log_ok "已预置 Agent 通信密钥 (agent_secret_key): ${INPUT_AGENT_KEY}"
+    fi
+
     # 写入环境配置备忘 .env
     cat > "$INPUT_DIR/.env" <<EOF
 DOMAIN=${INPUT_DOMAIN}
 EMAIL=${INPUT_EMAIL}
 PORT=${INPUT_PORT}
 SECRET_PATH=${INPUT_SECRET}
+AGENT_KEY=${INPUT_AGENT_KEY}
 INSTALL_DIR=${INPUT_DIR}
 EOF
 
@@ -691,6 +733,12 @@ cleanup_menu() {
 
 show_info() {
     source "$BASE_DIR/.env" 2>/dev/null || true
+    local current_agent_key="$AGENT_KEY"
+    if [ -f "$BASE_DIR/data/config.yaml" ]; then
+        local cfg_key
+        cfg_key="$(grep -E '^agent_secret_key:' "$BASE_DIR/data/config.yaml" | awk '{print $2}' | tr -d ' "\r\n')"
+        [ -n "$cfg_key" ] && current_agent_key="$cfg_key"
+    fi
     echo "============================================================================"
     echo "                    哪吒监控安全增强版 · 部署配置信息                    "
     echo "============================================================================"
@@ -699,6 +747,7 @@ show_info() {
     echo "后台管理控制: https://${DOMAIN}/${SECRET_PATH}/dashboard/"
     echo "默认管理账号: admin"
     echo "默认管理密码: admin (首次进入后台请立即修改)"
+    [ -n "$current_agent_key" ] && echo "Agent 通信密钥: ${current_agent_key}"
     echo "通信端口:     ${PORT}"
     echo "安装目录:     ${BASE_DIR}"
     echo "网关架构:     Docker Nginx (alpine, 极低内存)"
@@ -895,6 +944,13 @@ print_success() {
     echo ""
     echo -e "  👤 ${BOLD}初始管理员账号${NC}:   ${YELLOW}admin${NC}"
     echo -e "  🔑 ${BOLD}初始管理员密码${NC}:   ${YELLOW}admin${NC} ${RED}(首次登录后请务必立即修改！)${NC}"
+    local current_agent_key="$INPUT_AGENT_KEY"
+    if [ -z "$current_agent_key" ] && [ -f "$INPUT_DIR/data/config.yaml" ]; then
+        current_agent_key="$(grep -E '^agent_secret_key:' "$INPUT_DIR/data/config.yaml" | awk '{print $2}' | tr -d ' "\r\n')"
+    fi
+    if [ -n "$current_agent_key" ]; then
+        echo -e "  🗝️  ${BOLD}Agent 通信密钥${NC}:   ${GREEN}${current_agent_key}${NC} (旧探针可直接使用此密钥连接上线)"
+    fi
     echo ""
     echo -e "  🔒 ${BOLD}SSL 证书状态${NC}:"
     echo -e "     - ${GREEN}acme.sh 已签发 Let's Encrypt 证书${NC}"
@@ -1022,6 +1078,12 @@ service_info() {
     if [ -f "$target_dir/.env" ]; then
         source "$target_dir/.env" 2>/dev/null || true
     fi
+    local current_agent_key="$AGENT_KEY"
+    if [ -f "$target_dir/data/config.yaml" ]; then
+        local cfg_key
+        cfg_key="$(grep -E '^agent_secret_key:' "$target_dir/data/config.yaml" | awk '{print $2}' | tr -d ' "\r\n')"
+        [ -n "$cfg_key" ] && current_agent_key="$cfg_key"
+    fi
     echo ""
     echo -e "${CYAN}${BOLD}============================================================================${NC}"
     echo -e "${CYAN}${BOLD}                    哪吒监控安全增强版 · 部署配置信息                    ${NC}"
@@ -1031,6 +1093,7 @@ service_info() {
     echo -e "  - 后台管理控制: ${GREEN}https://${DOMAIN}/${SECRET_PATH}/dashboard/${NC}"
     echo -e "  - 默认管理账号: ${YELLOW}admin${NC}"
     echo -e "  - 默认管理密码: ${YELLOW}admin (首次进入后台请立即修改)${NC}"
+    [ -n "$current_agent_key" ] && echo -e "  - Agent通信密钥: ${GREEN}${current_agent_key}${NC} (旧探针可直接使用此密钥连接上线)"
     echo -e "  - 通信端口:     ${GREEN}${PORT}${NC}"
     echo -e "  - 安装目录:     ${GREEN}${INSTALL_DIR:-$target_dir}${NC}"
     echo -e "  - 容器网关:     ${GREEN}Docker Nginx (alpine)${NC}"
@@ -1093,6 +1156,15 @@ show_usage() {
     echo "  info          查看当前配置与访问链接"
     echo "  uninstall     彻底卸载并清理全部数据与证书"
     echo ""
+    echo "选项:"
+    echo "  -d, --domain DOMAIN       指定绑定域名"
+    echo "  -e, --email EMAIL         指定证书通知邮箱"
+    echo "  -p, --port PORT           指定内部通信端口 (默认: 2052)"
+    echo "  -s, --secret SECRET       指定 8 位防探测英文安全路径"
+    echo "  -k, --agent-key KEY       指定 Agent 通信密钥 (方便旧探针直接上线)"
+    echo "  --dir DIR                 指定安装目录 (默认: /opt/nezha-dashboard)"
+    echo "  -y, --yes                 静默自动确认部署"
+    echo ""
 }
 
 ACTION=""
@@ -1104,6 +1176,7 @@ parse_args() {
             -e|--email)  EMAIL="$2"; shift 2 ;;
             -p|--port)   PORT="$2"; shift 2 ;;
             -s|--secret) SECRET_PATH="$2"; shift 2 ;;
+            -k|--key|--agent-key) AGENT_KEY="$2"; shift 2 ;;
             --dir)       INSTALL_DIR="$2"; shift 2 ;;
             -y|--yes)    NON_INTERACTIVE="true"; shift ;;
             install|setup) ACTION="install"; shift ;;

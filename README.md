@@ -66,20 +66,39 @@ bash <(curl -fsSL https://raw.githubusercontent.com/opengaoling/nezha-panel/mast
   -e admin@yourdomain.com \
   -y
 
+# 指定已有旧探针密钥 (方便旧 Agent 无缝自动上线，免逐台修改客户端)
+bash <(curl -fsSL https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh) \
+  -d monitor.yourdomain.com \
+  -e admin@yourdomain.com \
+  -k "your_agent_secret_key" \
+  -y
+
 # 自定义安装目录与通信端口
 bash <(curl -fsSL https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh) \
   -d monitor.yourdomain.com \
   -e admin@yourdomain.com \
   -p 2052 \
+  -k "your_agent_secret_key" \
   --dir /opt/nezha-dashboard \
   -y
 ```
+
+| 参数选项 | 说明 | 默认值 |
+| :--- | :--- | :--- |
+| `-d, --domain` | 绑定域名 (需已解析到本机 IP) | 交互式输入 |
+| `-e, --email` | SSL 证书通知邮箱 (用于 acme.sh 证书注册) | 自动生成 |
+| `-p, --port` | 内部反向代理通信端口 | `2052` |
+| `-s, --secret` | 8 位防探测英文安全路径 | 自动随机生成 |
+| `-k, --agent-key` | Agent 通信密钥 (旧探针直接上线) | 沿用已有或随机生成 |
+| `--dir` | 面板安装目录 | `/opt/nezha-dashboard` |
+| `-y, --yes` | 静默自动确认部署 | 关闭 |
 
 ### 访问地址与初始凭据
 - 🌐 **前台监控面板**：`https://<你的域名>/<8位随机安全路径>/`
 - ⚙️ **管理后台系统**：`https://<你的域名>/<8位随机安全路径>/dashboard/`
 - 👤 **默认管理员账号**：`admin`
 - 🔑 **默认管理员密码**：`admin` *(首次登录后请务必在后台立即修改！)*
+- 🗝️ **Agent 通信密钥**：部署时可指定或自动生成，随时执行 `nezha info` 查看，旧探针直接使用该密钥即可秒级上线。
 
 ---
 
