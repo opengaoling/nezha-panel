@@ -184,8 +184,8 @@ func RecordTransferHourlyUsage(servers ...*model.Server) {
 		return
 	}
 
-	// 当已启用 TSDB 且无任何活跃的周期流量规则时，时序指标已由 TSDB 全量托管，无需向 SQLite transfers 表写入历史记录
-	if TSDBEnabled() && !HasCycleTransferRules() {
+	// 流量记录改由 TSDB 托管：只要已启用 TSDB，完全不再向主数据库 (SQLite) transfers 表写入任何记录
+	if TSDBEnabled() {
 		return
 	}
 
@@ -199,9 +199,24 @@ func RecordTransferHourlyUsage(servers ...*model.Server) {
 	}
 }
 
-// CleanMonitorHistory 清理流量记录（TSDB 有自己的保留策略，SQLite transfers 严格按需与 retention_days 保留）
+// CleanMonitorHistory 清理流量记录（TSDB 有自己的保留策略，启用 TSDB 时自动清空主数据库中的历史 transfers 记录）
 func CleanMonitorHistory() {
 	if DB == nil {
+		return
+	}
+
+	// 当已开启 TSDB 时，流量数据已全量迁移至 TSDB，清空 SQLite transfers 表以缩小 sqlite.db
+	if TSDBEnabled() {
+		res := DB.Unscoped().Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.Transfer{})
+		if res.RowsAffected > 0 {
+			log.Printf("NEZHA>> TSDB enabled: purged %d obsolete transfer rows from SQLite", res.RowsAffected)
+			log.Println("NEZHA>> SQLite: Executing VACUUM to reclaim disk space...")
+			if err := DB.Exec("VACUUM").Error; err != nil {
+				log.Printf("NEZHA>> SQLite: VACUUM failed: %v", err)
+			} else {
+				log.Println("NEZHA>> SQLite: VACUUM completed successfully")
+			}
+		}
 		return
 	}
 
@@ -211,7 +226,7 @@ func CleanMonitorHistory() {
 	// 2. 确定数据保留时长（默认 30 天，可由 tsdb.retention_days 配置）
 	retentionDays := 30
 	if Conf.TSDB.RetentionDays > 0 {
-		retentionDays = Conf.TSDB.RetentionDays
+		retentionDays = int(Conf.TSDB.RetentionDays)
 	}
 	defaultKeepTime := time.Now().AddDate(0, 0, -retentionDays)
 

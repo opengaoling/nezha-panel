@@ -662,3 +662,105 @@ func (db *TSDB) queryMetricByServerID(metric MetricType, serverID string, tr sto
 
 	return result, nil
 }
+
+// QueryTransferCycle 计算服务器在 [cycleStart, now] 时间段内指定累积指标的总增量 (字节)。
+// 能够感知并自动处理服务器重启或计数器重置 (counter reset)。
+// currentVal 为当前实时内存中的计数器值 (如果 > 0 则作为当前时刻的终点采样)。
+func (db *TSDB) QueryTransferCycle(serverID uint64, metric MetricType, cycleStart time.Time, currentVal uint64) (uint64, error) {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	if db.closed {
+		return 0, fmt.Errorf("TSDB is closed")
+	}
+
+	now := time.Now()
+	if cycleStart.After(now) {
+		return 0, nil
+	}
+
+	tr := storage.TimeRange{
+		MinTimestamp: cycleStart.UnixMilli(),
+		MaxTimestamp: now.UnixMilli(),
+	}
+
+	serverIDStr := strconv.FormatUint(serverID, 10)
+
+	tfs := storage.NewTagFilters()
+	if err := tfs.Add(nil, []byte(metric), false, false); err != nil {
+		return 0, err
+	}
+	if err := tfs.Add([]byte("server_id"), []byte(serverIDStr), false, false); err != nil {
+		return 0, err
+	}
+
+	deadline := uint64(time.Now().Add(30 * time.Second).Unix())
+
+	var search storage.Search
+	search.Init(nil, db.storage, []*storage.TagFilters{tfs}, tr, 100000, deadline)
+	defer search.MustClose()
+
+	var points []rawDataPoint
+	var timestamps []int64
+	var values []float64
+
+	for search.NextMetricBlock() {
+		mbr := search.MetricBlockRef
+		var block storage.Block
+		mbr.BlockRef.MustReadBlock(&block)
+
+		if err := block.UnmarshalData(); err != nil {
+			log.Printf("NEZHA>> TSDB: failed to unmarshal block data: %v", err)
+			continue
+		}
+
+		timestamps = timestamps[:0]
+		values = values[:0]
+		timestamps, values = block.AppendRowsWithTimeRangeFilter(timestamps, values, tr)
+
+		for i := range timestamps {
+			points = append(points, rawDataPoint{
+				timestamp: timestamps[i],
+				value:     values[i],
+			})
+		}
+	}
+
+	if err := search.Error(); err != nil {
+		return 0, err
+	}
+
+	if currentVal > 0 {
+		points = append(points, rawDataPoint{
+			timestamp: now.UnixMilli(),
+			value:     float64(currentVal),
+		})
+	}
+
+	if len(points) <= 1 {
+		return 0, nil
+	}
+
+	sort.Slice(points, func(i, j int) bool {
+		return points[i].timestamp < points[j].timestamp
+	})
+
+	var total uint64
+	prev := points[0].value
+	prevTs := points[0].timestamp
+	for _, p := range points[1:] {
+		if p.timestamp == prevTs {
+			continue
+		}
+		if p.value >= prev {
+			total += uint64(p.value - prev)
+		} else {
+			// 计数器重置 (如服务器重启): 加上重启后累计的值
+			total += uint64(p.value)
+		}
+		prev = p.value
+		prevTs = p.timestamp
+	}
+
+	return total, nil
+}
+

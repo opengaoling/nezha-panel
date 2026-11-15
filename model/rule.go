@@ -19,6 +19,11 @@ type NResult struct {
 	N uint64
 }
 
+// CycleTransferLookup 查询服务器在指定周期起始时间后的流量使用量 (字节)
+// 参数: serverID, metric ("in", "out", "all"), cycleStart, currentNetIn, currentNetOut
+// 返回值: 累计使用量, 是否已由 TSDB 接管处理 (true 表示已由 TSDB 计算, false 表示降级走 SQLite)
+var CycleTransferLookup func(serverID uint64, metric string, cycleStart time.Time, currentNetIn uint64, currentNetOut uint64) (uint64, bool)
+
 type Rule struct {
 	// 指标类型，cpu、memory、swap、disk、net_in_speed、net_out_speed
 	// net_all_speed、transfer_in、transfer_out、transfer_all、offline
@@ -93,24 +98,45 @@ func (u *Rule) Snapshot(cycleTransferStats *CycleTransferStats, server *Server, 
 			src = float64(server.LastActive.Unix())
 		}
 	case "transfer_in_cycle":
+		cycleStart := u.GetTransferDurationStart()
+		if CycleTransferLookup != nil {
+			if total, ok := CycleTransferLookup(server.ID, "in", cycleStart, server.State.NetInTransfer, server.State.NetOutTransfer); ok {
+				src = float64(total)
+				break
+			}
+		}
 		src = float64(utils.SubUintChecked(server.State.NetInTransfer, server.PrevTransferInSnapshot))
-		if u.CycleInterval != 0 {
+		if u.CycleInterval != 0 && db != nil {
 			var res NResult
-			db.Model(&Transfer{}).Select("SUM(`in`) AS n").Where("datetime(`created_at`) >= datetime(?) AND server_id = ?", u.GetTransferDurationStart().UTC(), server.ID).Scan(&res)
+			db.Model(&Transfer{}).Select("SUM(`in`) AS n").Where("datetime(`created_at`) >= datetime(?) AND server_id = ?", cycleStart.UTC(), server.ID).Scan(&res)
 			src += float64(res.N)
 		}
 	case "transfer_out_cycle":
+		cycleStart := u.GetTransferDurationStart()
+		if CycleTransferLookup != nil {
+			if total, ok := CycleTransferLookup(server.ID, "out", cycleStart, server.State.NetInTransfer, server.State.NetOutTransfer); ok {
+				src = float64(total)
+				break
+			}
+		}
 		src = float64(utils.SubUintChecked(server.State.NetOutTransfer, server.PrevTransferOutSnapshot))
-		if u.CycleInterval != 0 {
+		if u.CycleInterval != 0 && db != nil {
 			var res NResult
-			db.Model(&Transfer{}).Select("SUM(`out`) AS n").Where("datetime(`created_at`) >= datetime(?) AND server_id = ?", u.GetTransferDurationStart().UTC(), server.ID).Scan(&res)
+			db.Model(&Transfer{}).Select("SUM(`out`) AS n").Where("datetime(`created_at`) >= datetime(?) AND server_id = ?", cycleStart.UTC(), server.ID).Scan(&res)
 			src += float64(res.N)
 		}
 	case "transfer_all_cycle":
+		cycleStart := u.GetTransferDurationStart()
+		if CycleTransferLookup != nil {
+			if total, ok := CycleTransferLookup(server.ID, "all", cycleStart, server.State.NetInTransfer, server.State.NetOutTransfer); ok {
+				src = float64(total)
+				break
+			}
+		}
 		src = float64(utils.SubUintChecked(server.State.NetOutTransfer, server.PrevTransferOutSnapshot) + utils.SubUintChecked(server.State.NetInTransfer, server.PrevTransferInSnapshot))
-		if u.CycleInterval != 0 {
+		if u.CycleInterval != 0 && db != nil {
 			var res NResult
-			db.Model(&Transfer{}).Select("SUM(`in`+`out`) AS n").Where("datetime(`created_at`) >= datetime(?) AND server_id = ?", u.GetTransferDurationStart().UTC(), server.ID).Scan(&res)
+			db.Model(&Transfer{}).Select("SUM(`in`+`out`) AS n").Where("datetime(`created_at`) >= datetime(?) AND server_id = ?", cycleStart.UTC(), server.ID).Scan(&res)
 			src += float64(res.N)
 		}
 	case "load1":

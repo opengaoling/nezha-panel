@@ -955,7 +955,7 @@ clean_sqlite_vacuum() {
     echo "正在深度清理与压缩整理 SQLite 数据库 (当前物理大小: ${old_size})..."
     if command -v python3 >/dev/null 2>&1; then
         python3 - <<'EOF' "$db_path"
-import sqlite3, sys
+import sqlite3, sys, os
 db_path = sys.argv[1]
 try:
     conn = sqlite3.connect(db_path)
@@ -970,7 +970,8 @@ try:
     except Exception:
         pass
 
-    if not has_cycle_rules:
+    tsdb_exists = os.path.exists(os.path.join(os.path.dirname(db_path), "tsdb"))
+    if tsdb_exists or not has_cycle_rules:
         cur.execute("DELETE FROM transfers")
     else:
         cur.execute("DELETE FROM transfers WHERE datetime(created_at) < datetime('now', '-30 days')")
@@ -1531,7 +1532,7 @@ service_vacuum() {
     log_info "正在深度清理与压缩整理 SQLite 数据库 (当前大小: ${old_size})..."
     if command -v python3 >/dev/null 2>&1; then
         python3 - <<'EOF' "$db_path"
-import sqlite3, sys
+import sqlite3, sys, os
 db_path = sys.argv[1]
 try:
     conn = sqlite3.connect(db_path)
@@ -1546,7 +1547,8 @@ try:
     except Exception:
         pass
 
-    if not has_cycle_rules:
+    tsdb_exists = os.path.exists(os.path.join(os.path.dirname(db_path), "tsdb"))
+    if tsdb_exists or not has_cycle_rules:
         cur.execute("DELETE FROM transfers")
     else:
         cur.execute("DELETE FROM transfers WHERE datetime(created_at) < datetime('now', '-30 days')")
