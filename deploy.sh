@@ -595,7 +595,7 @@ prepare_and_issue_ssl() {
 # 写入部署配置文件
 write_configs() {
     log_info "正在初始化部署目录: $INPUT_DIR"
-    mkdir -p "$INPUT_DIR" "$INPUT_DIR/data" "$INPUT_DIR/ssl" "$INPUT_DIR/acme-challenge" "$INPUT_DIR/acme-data"
+    mkdir -p "$INPUT_DIR" "$INPUT_DIR/data" "$INPUT_DIR/data/tsdb" "$INPUT_DIR/ssl" "$INPUT_DIR/acme-challenge" "$INPUT_DIR/acme-data"
     cd "$INPUT_DIR"
 
     # 生成 Nginx 配置
@@ -604,21 +604,39 @@ write_configs() {
     # 生成 docker-compose.yaml
     generate_compose_yaml "$INPUT_DIR" "$INPUT_PORT" "$INPUT_SECRET"
 
-    # 如果指定了 Agent 通信密钥，写入或预置到 data/config.yaml
-    if [ -n "$INPUT_AGENT_KEY" ]; then
-        local config_file="$INPUT_DIR/data/config.yaml"
-        if [ -f "$config_file" ]; then
+    # 预置/更新 data/config.yaml (启用 TSDB 时序数据库与 Agent 通信密钥)
+    local config_file="$INPUT_DIR/data/config.yaml"
+    if [ -f "$config_file" ]; then
+        if [ -n "$INPUT_AGENT_KEY" ]; then
             if grep -qE '^agent_secret_key:' "$config_file"; then
                 sed -i -E "s/^(agent_secret_key:).*/\1 ${INPUT_AGENT_KEY}/" "$config_file"
             else
                 echo "agent_secret_key: ${INPUT_AGENT_KEY}" >> "$config_file"
             fi
-        else
-            cat > "$config_file" <<EOF
-agent_secret_key: ${INPUT_AGENT_KEY}
-EOF
+            log_ok "已预置 Agent 通信密钥 (agent_secret_key): ${INPUT_AGENT_KEY}"
         fi
-        log_ok "已预置 Agent 通信密钥 (agent_secret_key): ${INPUT_AGENT_KEY}"
+        if grep -qE '^tsdb: *\{\}' "$config_file"; then
+            sed -i '/^tsdb: *{}/c\tsdb:\n  data_path: data/tsdb\n  retention_days: 30' "$config_file"
+            log_ok "已默认开启 TSDB 时序库 (30天自动滚动清理，防 sqlite 膨胀)"
+        elif ! grep -qE '^tsdb:' "$config_file"; then
+            cat >> "$config_file" <<EOF
+tsdb:
+  data_path: data/tsdb
+  retention_days: 30
+EOF
+            log_ok "已默认配置开启 TSDB 时序存储"
+        fi
+    else
+        cat > "$config_file" <<EOF
+tsdb:
+  data_path: data/tsdb
+  retention_days: 30
+EOF
+        if [ -n "$INPUT_AGENT_KEY" ]; then
+            echo "agent_secret_key: ${INPUT_AGENT_KEY}" >> "$config_file"
+            log_ok "已预置 Agent 通信密钥 (agent_secret_key): ${INPUT_AGENT_KEY}"
+        fi
+        log_ok "已默认开启 TSDB 时序存储 (data/tsdb, 30天自动清理，防 sqlite 膨胀)"
     fi
 
     # 写入环境配置备忘 .env
@@ -776,6 +794,7 @@ show_info() {
     echo "通信端口:     ${PORT}"
     echo "安装目录:     ${BASE_DIR}"
     echo "网关架构:     Docker Nginx (alpine, 极低内存)"
+    echo "时序存储:     TSDB 已启用 (data/tsdb, 30天自动滚动保留，防 sqlite 膨胀)"
     echo "证书续期:     Docker acme.sh 容器后台自动守护续期"
     echo "证书文件:     ${BASE_DIR}/ssl/${DOMAIN}.crt"
     echo "============================================================================"
@@ -929,9 +948,25 @@ service_update() {
     docker rm -f nezha-caddy caddy-gateway 2>/dev/null || true
     docker rmi caddy:2.8.4-alpine 2>/dev/null || true
 
-    mkdir -p "${target_dir}/ssl" "${target_dir}/acme-challenge" "${target_dir}/acme-data"
+    mkdir -p "${target_dir}/ssl" "${target_dir}/acme-challenge" "${target_dir}/acme-data" "${target_dir}/data/tsdb"
     generate_nginx_conf "$target_dir" "$DOMAIN" "$SECRET_PATH" "$PORT"
     generate_compose_yaml "$target_dir" "$PORT" "$SECRET_PATH"
+
+    # 升级时自动开启 TSDB 时序数据库支持 (彻底解决 sqlite 膨胀)
+    local config_file="${target_dir}/data/config.yaml"
+    if [ -f "$config_file" ]; then
+        if grep -qE '^tsdb: *\{\}' "$config_file"; then
+            sed -i '/^tsdb: *{}/c\tsdb:\n  data_path: data/tsdb\n  retention_days: 30' "$config_file"
+            log_ok "已为现有部署自动升级开启 TSDB 时序库 (30天自动滚动清理，防 sqlite 膨胀)"
+        elif ! grep -qE '^tsdb:' "$config_file"; then
+            cat >> "$config_file" <<EOF
+tsdb:
+  data_path: data/tsdb
+  retention_days: 30
+EOF
+            log_ok "已自动追加开启 TSDB 时序库配置"
+        fi
+    fi
 
     prepare_and_issue_ssl "$target_dir" "$DOMAIN" "$EMAIL"
 
@@ -984,8 +1019,9 @@ print_success() {
     echo -e "     - ${GREEN}acme.sh 已签发 Let's Encrypt 证书${NC}"
     echo -e "     - ${GREEN}后台 acme 容器每日自动检测续期${NC}，证书到期前自动热更新并重载 Nginx"
     echo ""
-    echo -e "  🛡️  ${BOLD}内存优化特性${NC}:"
+    echo -e "  🛡️  ${BOLD}性能与存储优化特性${NC}:"
     echo -e "     - ${GREEN}纯 Docker Nginx 网关${NC}：内存常驻仅 ~6MB，彻底替代 Caddy"
+    echo -e "     - ${GREEN}内置 TSDB 时序数据库${NC}：VictoriaMetrics 引擎托管监控数据，30 天滚动保留，防 sqlite.db 膨胀"
     echo -e "     - ${GREEN}面板软硬内存限制${NC}：GOMEMLIMIT=512MiB + Docker limit 600m，防止 502 崩溃"
     echo -e "     - ${GREEN}自动内存回收${NC}：Go GC 阈值降至 20%，每 6 小时自动向操作系统退还物理内存"
     echo ""
@@ -1125,6 +1161,7 @@ service_info() {
     echo -e "  - 通信端口:     ${GREEN}${PORT}${NC}"
     echo -e "  - 安装目录:     ${GREEN}${INSTALL_DIR:-$target_dir}${NC}"
     echo -e "  - 容器网关:     ${GREEN}Docker Nginx (alpine)${NC}"
+    echo -e "  - 时序存储:     ${GREEN}TSDB 已启用 (data/tsdb, 30天自动滚动清理，防 sqlite 膨胀)${NC}"
     echo -e "  - 证书守护:     ${GREEN}Docker acme.sh (自动续期)${NC}"
     echo -e "${CYAN}${BOLD}============================================================================${NC}"
     echo ""

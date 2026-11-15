@@ -225,6 +225,10 @@ networks:
 ### Q4: Agent 探针无法连接上线或频繁报客户端认证失败？
 > **解答**：哪吒探针使用带下划线的 HTTP/2 gRPC 元数据 Header（如 `client_secret` 与 `client_uuid`）向后端汇报与认证。Nginx 默认会把所有包含下划线的 Header 标记为非法并直接丢弃（`underscores_in_headers off`），导致后端无法获取认证凭据。本项目生成的 Nginx 配置已默认添加 `underscores_in_headers on;`，确保旧版与新版探针均可稳定鉴权秒级上线。
 
+### Q5: 为什么以前 sqlite.db 会越来越大？本版如何彻底解决？
+> **解答**：在未开启时序库的传统模式下，所有服务探测打点（Ping / TCP / HTTP）均以明文行直接写入 SQLite 的 `service_histories` 表且无滚动淘汰机制；加之 SQLite 自身执行 `DELETE` 后不向操作系统退还物理磁盘页的特性，导致文件持续膨胀到数十兆。
+> 本项目部署脚本**默认开启内置高性能 TSDB 时序存储**（`data/tsdb`，自动 30 天滚动清理淘汰），面板启动时自动清空 SQLite 中的旧监控历史，配合每周日自动维护及 `nezha vacuum` 一键压缩命令，使 `sqlite.db` 永久保持在 ~300KB 轻量级。
+
 ---
 
 ## 📄 开源许可 (License)
