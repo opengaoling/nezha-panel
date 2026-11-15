@@ -1468,6 +1468,24 @@ service_vacuum() {
     log_ok "SQLite 数据库压缩整理完毕！体积由 ${old_size} 优化至 ${new_size}。"
 }
 
+# 安装并配置看门狗自动更新服务
+service_install_watchdog() {
+    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    if [ ! -d "$target_dir" ] || [ ! -f "$target_dir/docker-compose.yaml" ]; then
+        log_warn "未在 $target_dir 检测到有效部署，请先安装面板。"
+        return
+    fi
+    log_info "正在为当前面板安装并配置看门狗自动更新服务..."
+    generate_watchdog_script "$target_dir"
+    bash "$target_dir/watchdog.sh" enable "30 4 * * *"
+    echo ""
+    log_info "正在测试执行一次镜像拉取与 SHA256 检查..."
+    bash "$target_dir/watchdog.sh" run
+    echo ""
+    log_ok "看门狗安装配置完成！每日 04:30 将自动拉取 GHCR 镜像并比对 SHA256 平滑重建。"
+    log_info "提示: 可随时使用 'nezha watchdog status' 查看状态，或执行 'nezha watchdog run' 手动检查。"
+}
+
 show_main_menu() {
     while true; do
         print_banner
@@ -1480,12 +1498,13 @@ show_main_menu() {
         echo -e "${GREEN}${BOLD}  7.${NC} 查看 Nginx 网关日志 (Nginx Logs)"
         echo -e "${GREEN}${BOLD}  8.${NC} 查看 acme.sh 续期日志 (acme.sh Logs)"
         echo -e "${GREEN}${BOLD}  9.${NC} 平滑更新面板镜像版本 (Update Image)"
+        echo -e "${CYAN}${BOLD} 10.${NC} 安装 / 启用看门狗自动更新服务 (Install Watchdog)"
         echo -e "${YELLOW}${BOLD}  c.${NC} 系统清理与维护 (Docker 缓存清理 / 日志截断 / 卸载清理)"
-        echo -e "${CYAN}${BOLD}  d.${NC} 镜像看门狗设置 (每日 04:30 自动比对 SHA256 平滑更新)"
+        echo -e "${CYAN}${BOLD}  d.${NC} 看门狗详细设置与日志跟踪 (Watchdog Menu)"
         echo -e "  ----------------------------------------------------------------------------"
         echo -e "${RED}${BOLD}  0.${NC} 退出脚本"
         echo ""
-        read -r -p "👉 请输入选择 [0-9/c/d]: " menu_choice
+        read -r -p "👉 请输入选择 [0-10/c/d]: " menu_choice
         case "$menu_choice" in
             1) do_install; break ;;
             2) service_start; press_any_key ;;
@@ -1496,6 +1515,7 @@ show_main_menu() {
             7) service_logs_nginx ;;
             8) service_logs_acme ;;
             9) service_update; press_any_key ;;
+            10|w|W) service_install_watchdog; press_any_key ;;
             c|C) source "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/nezha.sh" 2>/dev/null && cleanup_menu || echo "请先安装面板。" ;;
             d|D) source "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/nezha.sh" 2>/dev/null && watchdog_menu || (bash "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/watchdog.sh" status; press_any_key) ;;
             0|q|Q) echo "退出脚本。"; exit 0 ;;
@@ -1522,6 +1542,7 @@ show_usage() {
     echo "  logs-nginx    查看 Nginx 网关访问日志"
     echo "  logs-acme     查看 acme.sh 证书续期日志"
     echo "  vacuum        压缩与整理 SQLite 数据库释放物理磁盘空间"
+    echo "  watchdog-install, install-watchdog 安装并启用看门狗自动更新服务 (每日自动比对 SHA256 重建)"
     echo "  watchdog      配置或运行看门狗镜像自动更新守护 (每日拉取对比 SHA256)"
     echo "  info          查看当前配置与访问链接"
     echo "  uninstall     彻底卸载并清理全部数据与证书"
@@ -1561,6 +1582,7 @@ parse_args() {
             cert) ACTION="cert"; shift ;;
             update) ACTION="update"; shift ;;
             vacuum|clean-db) ACTION="vacuum"; shift ;;
+            install-watchdog|watchdog-install) ACTION="install-watchdog"; shift ;;
             watchdog) ACTION="watchdog"; shift ;;
             info) ACTION="info"; shift ;;
             uninstall) ACTION="uninstall"; shift ;;
@@ -1595,6 +1617,7 @@ main() {
             cert) service_cert ;;
             update) service_update ;;
             vacuum) service_vacuum ;;
+            install-watchdog) service_install_watchdog ;;
             watchdog) bash "$target_dir/watchdog.sh" "$@" ;;
             info) service_info ;;
             uninstall) source "$target_dir/nezha.sh" 2>/dev/null && clean_uninstall_all ;;
