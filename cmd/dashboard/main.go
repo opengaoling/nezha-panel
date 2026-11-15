@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"runtime/debug"
 	"strings"
 	"time"
@@ -77,6 +78,20 @@ func initSystem(bus chan<- *model.Service) error {
 		return err
 	}
 
+	// 每 6 小时强制归还 OS 内存，防止 Go runtime 长期持有未释放内存
+	if _, err := singleton.CronShared.AddFunc("0 0 */6 * * *", func() {
+		runtime.GC()
+		debug.FreeOSMemory()
+		log.Println("NEZHA>> MemGC: triggered GC + FreeOSMemory")
+	}); err != nil {
+		return err
+	}
+
+	// 每周日凌晨 4:00 执行 SQLite VACUUM + TSDB flush 维护，防止数据库持续膨胀占用内存
+	if _, err := singleton.CronShared.AddFunc("0 0 4 * * 0", func() { singleton.PerformMaintenance() }); err != nil {
+		return err
+	}
+
 	if err := singleton.StartJWTSessionGC(); err != nil {
 		return err
 	}
@@ -136,6 +151,10 @@ func main() {
 				debug.SetMemoryLimit(singleton.Conf.Memory.GoMemLimitMB * 1024 * 1024)
 				log.Printf("NEZHA>> Go memory limit set to %d MB", singleton.Conf.Memory.GoMemLimitMB)
 			}
+			// 调低 GC 触发阈值为 20%（默认 100%），让 GC 更频繁执行，
+			// 减少驻留内存峰值，避免长期运行后内存持续增长导致 OOM/502
+			debug.SetGCPercent(20)
+			log.Println("NEZHA>> Go GC percent set to 20 (aggressive GC to reduce memory growth)")
 			return nil
 		},
 		func() error {
