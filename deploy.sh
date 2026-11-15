@@ -682,6 +682,25 @@ clean_container_logs() {
     fi
 }
 
+clean_sqlite_vacuum() {
+    local db_path="${BASE_DIR}/data/sqlite.db"
+    if [ ! -f "$db_path" ]; then
+        echo "未发现数据库文件: $db_path"
+        return
+    fi
+    local old_size
+    old_size=$(du -h "$db_path" 2>/dev/null | cut -f1)
+    echo "正在压缩与整理 SQLite 数据库碎片 (当前物理大小: ${old_size})..."
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "import sqlite3; conn=sqlite3.connect('$db_path'); conn.execute('VACUUM'); conn.close()" 2>/dev/null || true
+    elif command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$db_path" "VACUUM;" 2>/dev/null || true
+    fi
+    local new_size
+    new_size=$(du -h "$db_path" 2>/dev/null | cut -f1)
+    echo "✅ SQLite 数据库压缩整理完毕！体积由 ${old_size} 优化至 ${new_size}。"
+}
+
 clean_containers_keep_data() {
     echo "此操作将停止并移除所有面板容器，但保留数据目录和证书！"
     read -r -p "确认清理容器与网络环境? [y/N]: " confirm_c
@@ -718,17 +737,19 @@ cleanup_menu() {
         echo "============================================================================"
         echo "  1. 清理 Docker 悬空镜像与构建缓存 (释放磁盘空间，不影响正在运行的服务)"
         echo "  2. 截断/清理 Docker 容器超大运行日志 (释放日志磁盘占用)"
-        echo "  3. 停止并清理容器 (保留面板数据和 SSL 证书配置)"
-        echo "  4. 彻底卸载面板端与清理所有数据/证书 (危险操作，不可逆)"
+        echo "  3. 压缩与整理 SQLite 数据库 (执行 VACUUM 回收空间与碎片整理)"
+        echo "  4. 停止并清理容器 (保留面板数据和 SSL 证书配置)"
+        echo "  5. 彻底卸载面板端与清理所有数据/证书 (危险操作，不可逆)"
         echo "  ----------------------------------------------------------------------------"
         echo "  0. 返回主菜单"
         echo ""
-        read -r -p "👉 请输入清理选择 [0-4]: " clean_choice
+        read -r -p "👉 请输入清理选择 [0-5]: " clean_choice
         case "$clean_choice" in
             1) clean_docker_cache; press_any_key ;;
             2) clean_container_logs; press_any_key ;;
-            3) clean_containers_keep_data; press_any_key ;;
-            4) clean_uninstall_all; press_any_key; break ;;
+            3) clean_sqlite_vacuum; press_any_key ;;
+            4) clean_containers_keep_data; press_any_key ;;
+            5) clean_uninstall_all; press_any_key; break ;;
             0|b|B|q|Q) break ;;
             *) echo "无效输入，请重新选择。"; sleep 1 ;;
         esac
@@ -871,6 +892,9 @@ case "$1" in
         ;;
     clean|cleanup)
         cleanup_menu
+        ;;
+    vacuum|clean-db)
+        clean_sqlite_vacuum
         ;;
     uninstall)
         clean_uninstall_all
@@ -1106,6 +1130,26 @@ service_info() {
     echo ""
 }
 
+service_vacuum() {
+    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    local db_path="${target_dir}/data/sqlite.db"
+    if [ ! -f "$db_path" ]; then
+        log_warn "未发现数据库文件: $db_path"
+        return
+    fi
+    local old_size
+    old_size=$(du -h "$db_path" 2>/dev/null | cut -f1)
+    log_info "正在压缩与整理 SQLite 数据库碎片 (当前大小: ${old_size})..."
+    if command -v python3 >/dev/null 2>&1; then
+        python3 -c "import sqlite3; conn=sqlite3.connect('$db_path'); conn.execute('VACUUM'); conn.close()" 2>/dev/null || true
+    elif command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "$db_path" "VACUUM;" 2>/dev/null || true
+    fi
+    local new_size
+    new_size=$(du -h "$db_path" 2>/dev/null | cut -f1)
+    log_ok "SQLite 数据库压缩整理完毕！体积由 ${old_size} 优化至 ${new_size}。"
+}
+
 show_main_menu() {
     while true; do
         print_banner
@@ -1157,6 +1201,7 @@ show_usage() {
     echo "  logs          查看面板服务日志"
     echo "  logs-nginx    查看 Nginx 网关访问日志"
     echo "  logs-acme     查看 acme.sh 证书续期日志"
+    echo "  vacuum        压缩与整理 SQLite 数据库释放物理磁盘空间"
     echo "  info          查看当前配置与访问链接"
     echo "  uninstall     彻底卸载并清理全部数据与证书"
     echo ""
@@ -1194,6 +1239,7 @@ parse_args() {
             logs-acme) ACTION="logs-acme"; shift ;;
             cert) ACTION="cert"; shift ;;
             update) ACTION="update"; shift ;;
+            vacuum|clean-db) ACTION="vacuum"; shift ;;
             info) ACTION="info"; shift ;;
             uninstall) ACTION="uninstall"; shift ;;
             menu) ACTION="menu"; shift ;;
@@ -1226,6 +1272,7 @@ main() {
             logs-acme) service_logs_acme ;;
             cert) service_cert ;;
             update) service_update ;;
+            vacuum) service_vacuum ;;
             info) service_info ;;
             uninstall) source "$target_dir/nezha.sh" 2>/dev/null && clean_uninstall_all ;;
             menu) show_main_menu ;;

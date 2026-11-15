@@ -119,7 +119,8 @@ nezha logs         # 实时跟踪面板 Go 服务日志
 nezha logs-nginx   # 查看 Nginx 访问与反向代理日志
 nezha logs-acme    # 查看 acme.sh 证书续期守护日志
 nezha info         # 查看当前配置备忘与完整访问链接
-nezha clean        # 进入系统维护与清理菜单 (清理 Docker 缓存/截断大日志)
+nezha vacuum       # 压缩整理 SQLite 数据库碎片 (回收已删除数据物理磁盘空间)
+nezha clean        # 进入系统维护与清理菜单 (清理 Docker 缓存/截断大日志/数据库维护)
 nezha uninstall    # 彻底卸载面板服务与清理数据
 ```
 
