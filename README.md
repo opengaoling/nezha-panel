@@ -120,6 +120,7 @@ nezha
 nezha status           # 查看所有容器 (dashboard / nginx / acme) 运行状态与内存
 nezha restart          # 重启所有容器服务
 nezha update           # 手动平滑拉取最新镜像并重建容器
+nezha update-script    # 一键更新管理脚本与部署脚本自身至 GitHub 最新版本
 nezha watchdog status  # 查看看门狗每日自动更新配置状态与最近更新日志
 nezha watchdog run     # 立即触发一次看门狗 SHA256 对比检查与平滑更新
 nezha watchdog enable  # 启用每日定时看门狗更新 (默认每天 04:30 自动执行)

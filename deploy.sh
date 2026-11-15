@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.8.0"
+SCRIPT_VERSION="v2.9.0"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -884,11 +884,20 @@ AGENT_KEY=${INPUT_AGENT_KEY}
 INSTALL_DIR=${INPUT_DIR}
 EOF
 
-    # 写入全局管理工具 nezha.sh
-    cat > "$INPUT_DIR/nezha.sh" << 'NEZHA_SH_EOF'
+    generate_nezha_script "$INPUT_DIR"
+    generate_watchdog_script "$INPUT_DIR"
+    bash "$INPUT_DIR/watchdog.sh" enable "30 4 * * *" >/dev/null 2>&1 || true
+    log_ok "已配置并启用看门狗自动更新守护 (每日 04:30 自动拉取 GHCR 镜像并校验重建)"
+}
+
+# 生成并安装管理脚本 nezha.sh
+generate_nezha_script() {
+    local target_dir="$1"
+    mkdir -p "$target_dir"
+    cat > "$target_dir/nezha.sh" << 'NEZHA_SH_EOF'
 #!/usr/bin/env bash
 # Nezha Dashboard Management Tool (Docker Nginx + acme.sh Edition)
-VERSION="v2.8.0"
+VERSION="v2.9.0"
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -1092,6 +1101,33 @@ watchdog_menu() {
     done
 }
 
+update_script() {
+    echo "正在从 GitHub 获取最新的部署与管理脚本..."
+    local tmp_script
+    tmp_script=$(mktemp /tmp/nezha-deploy-XXXXXX.sh)
+    local urls=(
+        "https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+        "https://fastly.jsdelivr.net/gh/opengaoling/nezha-panel@master/deploy.sh"
+        "https://ghfast.top/https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+    )
+    local success=false
+    for u in "${urls[@]}"; do
+        if curl -fsSL --connect-timeout 8 --max-time 30 "$u" -o "$tmp_script" 2>/dev/null; then
+            if [ -s "$tmp_script" ] && bash -n "$tmp_script" >/dev/null 2>&1; then
+                success=true
+                break
+            fi
+        fi
+    done
+    if [ "$success" = "true" ]; then
+        bash "$tmp_script" update-script --dir "$BASE_DIR"
+        rm -f "$tmp_script" 2>/dev/null || true
+    else
+        echo "❌ 获取最新脚本失败，请检查网络连接。"
+        rm -f "$tmp_script" 2>/dev/null || true
+    fi
+}
+
 show_menu() {
     while true; do
         clear 2>/dev/null || true
@@ -1107,6 +1143,7 @@ show_menu() {
         echo "  7. 查看 Nginx 网关日志 (Nginx Logs)"
         echo "  8. 查看 acme.sh 续期日志 (acme.sh Logs)"
         echo "  9. 平滑更新面板镜像 (Update)"
+        echo "  u. 更新管理与部署脚本自身 (Update Script)"
         echo "  a. 查看 SSL 证书状态 (SSL Cert Info)"
         echo "  b. 重新加载 Nginx 配置 (Reload Nginx)"
         echo "  c. 系统清理与维护 (Docker 缓存清理 / 日志截断 / 彻底卸载)"
@@ -1114,7 +1151,7 @@ show_menu() {
         echo "  ----------------------------------------------------------------------------"
         echo "  0. 退出管理控制台"
         echo ""
-        read -r -p "👉 请输入选择 [0-9/a-d]: " choice
+        read -r -p "👉 请输入选择 [0-9/a-d/u]: " choice
         case "$choice" in
             1) echo "=== 容器运行状态 ==="; $CMD ps; press_any_key ;;
             2) echo "正在启动服务..."; $CMD up -d; press_any_key ;;
@@ -1125,6 +1162,7 @@ show_menu() {
             7) $CMD logs -f nginx ;;
             8) $CMD logs -f acme ;;
             9) echo "正在平滑更新镜像..."; $CMD pull && $CMD up -d --remove-orphans; press_any_key ;;
+            u|U) update_script; press_any_key ;;
             a|A) show_cert_info; press_any_key ;;
             b|B) docker exec nezha-nginx nginx -s reload && echo "✅ Nginx 重载成功！"; press_any_key ;;
             c|C) cleanup_menu ;;
@@ -1167,6 +1205,9 @@ case "$1" in
         $CMD up -d --remove-orphans
         echo "更新完毕！"
         ;;
+    update-script|self-update)
+        update_script
+        ;;
     reload-nginx)
         docker exec nezha-nginx nginx -s reload && echo "✅ Nginx 重载成功！"
         ;;
@@ -1196,17 +1237,13 @@ case "$1" in
         show_menu
         ;;
     *)
-        echo "用法: $0 {menu|status|start|stop|restart|logs|logs-nginx|logs-acme|update|reload-nginx|cert|info|clean|vacuum|watchdog|uninstall|version}"
+        echo "用法: $0 {menu|status|start|stop|restart|logs|logs-nginx|logs-acme|update|update-script|reload-nginx|cert|info|clean|vacuum|watchdog|uninstall|version}"
         exit 1
         ;;
 esac
 NEZHA_SH_EOF
-    chmod +x "$INPUT_DIR/nezha.sh"
-    ln -sf "$INPUT_DIR/nezha.sh" /usr/local/bin/nezha 2>/dev/null || true
-
-    generate_watchdog_script "$INPUT_DIR"
-    bash "$INPUT_DIR/watchdog.sh" enable "30 4 * * *" >/dev/null 2>&1 || true
-    log_ok "已配置并启用看门狗自动更新守护 (每日 04:30 自动拉取 GHCR 镜像并校验重建)"
+    chmod +x "$target_dir/nezha.sh"
+    ln -sf "$target_dir/nezha.sh" /usr/local/bin/nezha 2>/dev/null || true
 }
 
 # 平滑更新现有面板部署 (自动迁移老旧 Caddy 配置为 Nginx + acme.sh)
@@ -1245,6 +1282,7 @@ EOF
 
     prepare_and_issue_ssl "$target_dir" "$DOMAIN" "$EMAIL"
 
+    generate_nezha_script "$target_dir"
     generate_watchdog_script "$target_dir"
     bash "$target_dir/watchdog.sh" enable "30 4 * * *" >/dev/null 2>&1 || true
     log_ok "已升级并启用看门狗镜像自动更新守护 (每日 04:30 自动拉取并平滑重建)"
@@ -1254,6 +1292,9 @@ EOF
 
     # 尝试重载 Nginx
     docker exec nezha-nginx nginx -s reload >/dev/null 2>&1 || true
+
+    # 压缩整理 sqlite 碎片
+    service_vacuum >/dev/null 2>&1 || true
 
     log_ok "面板已平滑更新至最新 Docker Nginx + acme.sh 架构！"
 }
@@ -1486,6 +1527,82 @@ service_install_watchdog() {
     log_info "提示: 可随时使用 'nezha watchdog status' 查看状态，或执行 'nezha watchdog run' 手动检查。"
 }
 
+# 更新一键部署管理脚本自身 (Update Self Script)
+update_self_script() {
+    log_info "正在检查并更新部署与管理脚本至 GitHub 最新版本..."
+    local cur_script
+    cur_script="$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")"
+    local script_dir
+    script_dir="$(cd -P "$(dirname "$cur_script")" >/dev/null 2>&1 && pwd)"
+
+    # 如果当前脚本运行在 git 仓库中，优先尝试 git pull
+    if [ -d "$script_dir/.git" ] && command -v git >/dev/null 2>&1; then
+        log_info "检测到当前脚本位于 Git 仓库中 ($script_dir)，正在执行 git pull..."
+        if (cd "$script_dir" && git pull origin master 2>&1); then
+            log_ok "Git 仓库代码更新成功！"
+        else
+            log_warn "Git 自动更新遇到问题，将通过远程直接下载覆盖。"
+        fi
+    fi
+
+    local tmp_file
+    tmp_file="$(mktemp /tmp/deploy-XXXXXX.sh)"
+    local urls=(
+        "https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+        "https://fastly.jsdelivr.net/gh/opengaoling/nezha-panel@master/deploy.sh"
+        "https://ghfast.top/https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+    )
+
+    local downloaded=false
+    for url in "${urls[@]}"; do
+        log_info "尝试从镜像源获取最新脚本: $url"
+        if curl -fsSL --connect-timeout 8 --max-time 30 "$url" -o "$tmp_file" 2>/dev/null; then
+            if [ -s "$tmp_file" ] && grep -q "SCRIPT_VERSION=" "$tmp_file" && bash -n "$tmp_file" >/dev/null 2>&1; then
+                downloaded=true
+                log_ok "成功下载并校验最新脚本！"
+                break
+            fi
+        fi
+    done
+
+    if [ "$downloaded" != "true" ]; then
+        log_error "下载最新脚本失败或脚本内容校验未通过，请检查网络连接。"
+        rm -f "$tmp_file" 2>/dev/null || true
+        return 1
+    fi
+
+    local new_version
+    new_version="$(grep -E '^SCRIPT_VERSION=' "$tmp_file" | head -n1 | cut -d= -f2 | tr -d ' "\r\n')"
+    [ -z "$new_version" ] && new_version="最新版"
+
+    # 替换当前脚本自身（只要不是 /dev/fd 等临时管道）
+    if [[ "$cur_script" == /dev/* ]] || [ ! -f "$cur_script" ]; then
+        cur_script="/root/nezha-panel/deploy.sh"
+    fi
+
+    if [ -f "$cur_script" ]; then
+        cp -f "$tmp_file" "$cur_script"
+        chmod +x "$cur_script"
+        log_ok "部署脚本已更新至版本: ${new_version} (${cur_script})"
+    fi
+
+    # 同步更新安装目录中的管理脚本 nezha.sh 与 watchdog.sh
+    local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
+    if [ -d "$target_dir" ]; then
+        log_info "正在同步更新安装目录的管理工具与看门狗 (${target_dir})..."
+        bash "$tmp_file" sync-tools --dir "$target_dir" >/dev/null 2>&1 || {
+            generate_nezha_script "$target_dir" 2>/dev/null || true
+            generate_watchdog_script "$target_dir" 2>/dev/null || true
+        }
+        ln -sf "$target_dir/nezha.sh" /usr/local/bin/nezha 2>/dev/null || true
+        log_ok "已同步更新 ${target_dir}/nezha.sh 与 /usr/local/bin/nezha"
+    fi
+
+    rm -f "$tmp_file" 2>/dev/null || true
+    echo ""
+    log_ok "🎉 部署与管理脚本全部更新完毕 (当前版本: ${new_version})！"
+}
+
 show_main_menu() {
     while true; do
         print_banner
@@ -1499,12 +1616,13 @@ show_main_menu() {
         echo -e "${GREEN}${BOLD}  8.${NC} 查看 acme.sh 续期日志 (acme.sh Logs)"
         echo -e "${GREEN}${BOLD}  9.${NC} 平滑更新面板镜像版本 (Update Image)"
         echo -e "${CYAN}${BOLD} 10.${NC} 安装 / 启用看门狗自动更新服务 (Install Watchdog)"
+        echo -e "${CYAN}${BOLD} 11.${NC} 更新一键部署管理脚本自身 (Update Script)"
         echo -e "${YELLOW}${BOLD}  c.${NC} 系统清理与维护 (Docker 缓存清理 / 日志截断 / 卸载清理)"
         echo -e "${CYAN}${BOLD}  d.${NC} 看门狗详细设置与日志跟踪 (Watchdog Menu)"
         echo -e "  ----------------------------------------------------------------------------"
         echo -e "${RED}${BOLD}  0.${NC} 退出脚本"
         echo ""
-        read -r -p "👉 请输入选择 [0-10/c/d]: " menu_choice
+        read -r -p "👉 请输入选择 [0-11/c/d/u]: " menu_choice
         case "$menu_choice" in
             1) do_install; break ;;
             2) service_start; press_any_key ;;
@@ -1516,6 +1634,7 @@ show_main_menu() {
             8) service_logs_acme ;;
             9) service_update; press_any_key ;;
             10|w|W) service_install_watchdog; press_any_key ;;
+            11|u|U) update_self_script; press_any_key ;;
             c|C) source "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/nezha.sh" 2>/dev/null && cleanup_menu || echo "请先安装面板。" ;;
             d|D) source "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/nezha.sh" 2>/dev/null && watchdog_menu || (bash "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/watchdog.sh" status; press_any_key) ;;
             0|q|Q) echo "退出脚本。"; exit 0 ;;
@@ -1534,6 +1653,7 @@ show_usage() {
     echo "  menu          显示交互式主菜单 (默认)"
     echo "  install       安装或重新部署哪吒面板"
     echo "  update        平滑升级至 Docker Nginx + acme.sh 架构并拉取最新镜像"
+    echo "  update-script, self-update 更新一键部署与管理脚本自身至 GitHub 最新版"
     echo "  status        查看所有容器运行状态"
     echo "  start         启动面板所有容器"
     echo "  stop          停止面板所有容器"
@@ -1581,6 +1701,8 @@ parse_args() {
             logs-acme) ACTION="logs-acme"; shift ;;
             cert) ACTION="cert"; shift ;;
             update) ACTION="update"; shift ;;
+            update-script|self-update) ACTION="update-script"; shift ;;
+            sync-tools) ACTION="sync-tools"; shift ;;
             vacuum|clean-db) ACTION="vacuum"; shift ;;
             install-watchdog|watchdog-install) ACTION="install-watchdog"; shift ;;
             watchdog) ACTION="watchdog"; shift ;;
@@ -1616,6 +1738,11 @@ main() {
             logs-acme) service_logs_acme ;;
             cert) service_cert ;;
             update) service_update ;;
+            update-script) update_self_script ;;
+            sync-tools)
+                generate_nezha_script "$target_dir"
+                generate_watchdog_script "$target_dir"
+                ;;
             vacuum) service_vacuum ;;
             install-watchdog) service_install_watchdog ;;
             watchdog) bash "$target_dir/watchdog.sh" "$@" ;;
