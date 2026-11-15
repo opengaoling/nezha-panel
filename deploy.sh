@@ -952,11 +952,41 @@ clean_sqlite_vacuum() {
     fi
     local old_size
     old_size=$(du -h "$db_path" 2>/dev/null | cut -f1)
-    echo "正在压缩与整理 SQLite 数据库碎片 (当前物理大小: ${old_size})..."
+    echo "正在深度清理与压缩整理 SQLite 数据库 (当前物理大小: ${old_size})..."
     if command -v python3 >/dev/null 2>&1; then
-        python3 -c "import sqlite3; conn=sqlite3.connect('$db_path'); conn.execute('VACUUM'); conn.close()" 2>/dev/null || true
+        python3 - <<'EOF' "$db_path"
+import sqlite3, sys
+db_path = sys.argv[1]
+try:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    has_cycle_rules = False
+    try:
+        cur.execute("SELECT rules FROM alert_rules")
+        for r in cur.fetchall():
+            if r[0] and "_cycle" in str(r[0]):
+                has_cycle_rules = True
+                break
+    except Exception:
+        pass
+
+    if not has_cycle_rules:
+        cur.execute("DELETE FROM transfers")
+    else:
+        cur.execute("DELETE FROM transfers WHERE datetime(created_at) < datetime('now', '-30 days')")
+
+    deleted = cur.rowcount
+    conn.commit()
+    if deleted > 0:
+        print(f"已清理 {deleted} 条冗余 transfers 流量记录")
+
+    cur.execute("VACUUM")
+    conn.close()
+except Exception as e:
+    print(f"清理执行提示: {e}")
+EOF
     elif command -v sqlite3 >/dev/null 2>&1; then
-        sqlite3 "$db_path" "VACUUM;" 2>/dev/null || true
+        sqlite3 "$db_path" "DELETE FROM transfers WHERE datetime(created_at) < datetime('now', '-30 days'); VACUUM;" 2>/dev/null || true
     fi
     local new_size
     new_size=$(du -h "$db_path" 2>/dev/null | cut -f1)
@@ -1498,11 +1528,41 @@ service_vacuum() {
     fi
     local old_size
     old_size=$(du -h "$db_path" 2>/dev/null | cut -f1)
-    log_info "正在压缩与整理 SQLite 数据库碎片 (当前大小: ${old_size})..."
+    log_info "正在深度清理与压缩整理 SQLite 数据库 (当前大小: ${old_size})..."
     if command -v python3 >/dev/null 2>&1; then
-        python3 -c "import sqlite3; conn=sqlite3.connect('$db_path'); conn.execute('VACUUM'); conn.close()" 2>/dev/null || true
+        python3 - <<'EOF' "$db_path"
+import sqlite3, sys
+db_path = sys.argv[1]
+try:
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+    has_cycle_rules = False
+    try:
+        cur.execute("SELECT rules FROM alert_rules")
+        for r in cur.fetchall():
+            if r[0] and "_cycle" in str(r[0]):
+                has_cycle_rules = True
+                break
+    except Exception:
+        pass
+
+    if not has_cycle_rules:
+        cur.execute("DELETE FROM transfers")
+    else:
+        cur.execute("DELETE FROM transfers WHERE datetime(created_at) < datetime('now', '-30 days')")
+
+    deleted = cur.rowcount
+    conn.commit()
+    if deleted > 0:
+        print(f"[OK] 已清理 {deleted} 条冗余 transfers 流量记录")
+
+    cur.execute("VACUUM")
+    conn.close()
+except Exception as e:
+    pass
+EOF
     elif command -v sqlite3 >/dev/null 2>&1; then
-        sqlite3 "$db_path" "VACUUM;" 2>/dev/null || true
+        sqlite3 "$db_path" "DELETE FROM transfers WHERE datetime(created_at) < datetime('now', '-30 days'); VACUUM;" 2>/dev/null || true
     fi
     local new_size
     new_size=$(du -h "$db_path" 2>/dev/null | cut -f1)

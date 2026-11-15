@@ -112,6 +112,44 @@ func InitDBFromPath(path string) error {
 	return nil
 }
 
+// HasCycleTransferRules 检查是否存在已启用的周期流量报警规则
+func HasCycleTransferRules() bool {
+	AlertsLock.RLock()
+	if len(Alerts) > 0 {
+		defer AlertsLock.RUnlock()
+		for _, alert := range Alerts {
+			if !alert.Enabled() {
+				continue
+			}
+			for _, rule := range alert.Rules {
+				if rule.IsTransferDurationRule() {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	AlertsLock.RUnlock()
+
+	// 若 AlertSentinel 尚未初始化或未加载，从数据库检查
+	if DB != nil {
+		var alerts []model.AlertRule
+		if err := DB.Find(&alerts).Error; err == nil {
+			for _, alert := range alerts {
+				if !alert.Enabled() {
+					continue
+				}
+				for _, rule := range alert.Rules {
+					if rule.IsTransferDurationRule() {
+						return true
+					}
+				}
+			}
+		}
+	}
+	return false
+}
+
 // RecordTransferHourlyUsage 对流量记录进行打点
 func RecordTransferHourlyUsage(servers ...*model.Server) {
 	now := time.Now()
@@ -131,11 +169,13 @@ func RecordTransferHourlyUsage(servers ...*model.Server) {
 			In:       utils.SubUintChecked(server.State.NetInTransfer, server.PrevTransferInSnapshot),
 			Out:      utils.SubUintChecked(server.State.NetOutTransfer, server.PrevTransferOutSnapshot),
 		}
+		// 无论是否写入 DB，都必须更新内存中的 Snapshot 基准值，保证重启或后续规则能正确计算增量
+		server.PrevTransferInSnapshot = server.State.NetInTransfer
+		server.PrevTransferOutSnapshot = server.State.NetOutTransfer
+
 		if tx.In == 0 && tx.Out == 0 {
 			continue
 		}
-		server.PrevTransferInSnapshot = server.State.NetInTransfer
-		server.PrevTransferOutSnapshot = server.State.NetOutTransfer
 		tx.CreatedAt = nowTrimSeconds
 		txs = append(txs, tx)
 	}
@@ -143,34 +183,67 @@ func RecordTransferHourlyUsage(servers ...*model.Server) {
 	if len(txs) == 0 {
 		return
 	}
-	log.Printf("NEZHA>> Saved traffic metrics to database. Affected %d row(s), Error: %v", len(txs), DB.Create(txs).Error)
+
+	// 当已启用 TSDB 且无任何活跃的周期流量规则时，时序指标已由 TSDB 全量托管，无需向 SQLite transfers 表写入历史记录
+	if TSDBEnabled() && !HasCycleTransferRules() {
+		return
+	}
+
+	if DB == nil {
+		return
+	}
+	if err := DB.Create(txs).Error; err != nil {
+		log.Printf("NEZHA>> Failed to save traffic metrics to database: %v", err)
+	} else {
+		log.Printf("NEZHA>> Saved traffic metrics to database. Affected %d row(s)", len(txs))
+	}
 }
 
-// CleanMonitorHistory 清理流量记录（TSDB 有自己的保留策略）
+// CleanMonitorHistory 清理流量记录（TSDB 有自己的保留策略，SQLite transfers 严格按需与 retention_days 保留）
 func CleanMonitorHistory() {
-	// 清理已被删除的服务器的流量记录
+	if DB == nil {
+		return
+	}
+
+	// 1. 清理已被删除的服务器的流量记录
 	DB.Unscoped().Delete(&model.Transfer{}, "server_id NOT IN (SELECT `id` FROM servers)")
-	// 计算可清理流量记录的时长
+
+	// 2. 确定数据保留时长（默认 30 天，可由 tsdb.retention_days 配置）
+	retentionDays := 30
+	if Conf.TSDB.RetentionDays > 0 {
+		retentionDays = Conf.TSDB.RetentionDays
+	}
+	defaultKeepTime := time.Now().AddDate(0, 0, -retentionDays)
+
+	// 3. 检查是否有需要使用 transfers 的周期流量报警规则
+	var alerts []model.AlertRule
+	DB.Find(&alerts)
+
+	var hasCycleRule bool
 	var allServerKeep time.Time
 	specialServerKeep := make(map[uint64]time.Time)
 	var specialServerIDs []uint64
-	var alerts []model.AlertRule
-	DB.Find(&alerts)
+
 	for _, alert := range alerts {
+		if !alert.Enabled() {
+			continue
+		}
 		for _, rule := range alert.Rules {
-			// 是不是流量记录规则
 			if !rule.IsTransferDurationRule() {
 				continue
 			}
+			hasCycleRule = true
 			dataCouldRemoveBefore := rule.GetTransferDurationStart().UTC()
-			// 判断规则影响的机器范围
+			// 确保不会无限期保留（最长不超过 retentionDays）
+			if dataCouldRemoveBefore.Before(defaultKeepTime) {
+				dataCouldRemoveBefore = defaultKeepTime
+			}
+
 			if rule.Cover == model.RuleCoverAll {
-				// 更新全局可以清理的数据点
 				if allServerKeep.IsZero() || allServerKeep.After(dataCouldRemoveBefore) {
 					allServerKeep = dataCouldRemoveBefore
 				}
 			} else {
-				// 更新特定机器可以清理数据点
 				for id := range rule.Ignore {
 					if specialServerKeep[id].IsZero() || specialServerKeep[id].After(dataCouldRemoveBefore) {
 						specialServerKeep[id] = dataCouldRemoveBefore
@@ -180,21 +253,62 @@ func CleanMonitorHistory() {
 			}
 		}
 	}
-	for id, couldRemove := range specialServerKeep {
-		DB.Unscoped().Delete(&model.Transfer{}, "server_id = ? AND datetime(`created_at`) < datetime(?)", id, couldRemove)
-	}
-	if allServerKeep.IsZero() {
-		DB.Unscoped().Delete(&model.Transfer{}, "server_id NOT IN (?)", specialServerIDs)
+
+	var rowsDeleted int64
+
+	// 4. 当已开启 TSDB 且系统无任何周期流量报警规则时，transfers 表无任何下游消费者，直接全量清空
+	if TSDBEnabled() && !hasCycleRule {
+		res := DB.Unscoped().Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(&model.Transfer{})
+		rowsDeleted = res.RowsAffected
+		if rowsDeleted > 0 {
+			log.Printf("NEZHA>> TSDB enabled with no cycle rules: purged %d obsolete transfer rows from SQLite", rowsDeleted)
+		}
 	} else {
-		DB.Unscoped().Delete(&model.Transfer{}, "server_id NOT IN (?) AND datetime(`created_at`) < datetime(?)", specialServerIDs, allServerKeep)
+		// 5. 按规则计算截止时间，对特殊机器和全局机器分别安全清理（严防 specialServerIDs 为空时 NOT IN (NULL) 导致不删除）
+		for id, couldRemove := range specialServerKeep {
+			res := DB.Unscoped().Delete(&model.Transfer{}, "server_id = ? AND datetime(`created_at`) < datetime(?)", id, couldRemove)
+			rowsDeleted += res.RowsAffected
+		}
+
+		cutoff := defaultKeepTime
+		if !allServerKeep.IsZero() && allServerKeep.Before(cutoff) {
+			cutoff = allServerKeep
+		}
+
+		var res *gorm.DB
+		if len(specialServerIDs) == 0 {
+			// 没有特定机器排除，直接按截止时间清理所有机器
+			res = DB.Unscoped().Delete(&model.Transfer{}, "datetime(`created_at`) < datetime(?)", cutoff)
+		} else {
+			// 排除有独立保留时间的机器
+			res = DB.Unscoped().Delete(&model.Transfer{}, "server_id NOT IN (?) AND datetime(`created_at`) < datetime(?)", specialServerIDs, cutoff)
+		}
+		rowsDeleted += res.RowsAffected
+
+		if rowsDeleted > 0 {
+			log.Printf("NEZHA>> Cleaned %d expired transfer rows from SQLite (cutoff: %v)", rowsDeleted, cutoff)
+		}
+	}
+
+	// 6. 如果清理了大量旧记录（如超过 500 行），主动执行 VACUUM 释放物理磁盘空间
+	if rowsDeleted > 500 {
+		log.Printf("NEZHA>> SQLite: Cleaned %d rows, executing VACUUM to reclaim disk space...", rowsDeleted)
+		if err := DB.Exec("VACUUM").Error; err != nil {
+			log.Printf("NEZHA>> SQLite: VACUUM failed: %v", err)
+		} else {
+			log.Println("NEZHA>> SQLite: VACUUM completed successfully")
+		}
 	}
 }
 
-// PerformMaintenance 执行系统维护（SQLite VACUUM 和 TSDB 维护）
+// PerformMaintenance 执行系统维护（SQLite 清理 + VACUUM 和 TSDB 维护）
 func PerformMaintenance() {
 	log.Println("NEZHA>> Starting system maintenance...")
 
-	// 1. SQLite 维护
+	// 1. 先执行历史监控与流量数据清理
+	CleanMonitorHistory()
+
+	// 2. SQLite 维护 (VACUUM 回收物理磁盘页)
 	if DB != nil {
 		log.Println("NEZHA>> SQLite: Starting VACUUM...")
 		if err := DB.Exec("VACUUM").Error; err != nil {
@@ -204,7 +318,7 @@ func PerformMaintenance() {
 		}
 	}
 
-	// 2. TSDB 维护
+	// 3. TSDB 维护
 	if TSDBEnabled() {
 		TSDBShared.Maintenance()
 	}

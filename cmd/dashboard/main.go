@@ -174,6 +174,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// 启动时执行历史流量清理（当 TSDB 已启用且无周期流量规则时，自动清空 transfers 表以降低 sqlite.db 体积）
 	singleton.CleanMonitorHistory()
 	rpc.DispatchKeepalive()
 	rpc.SetMCPKillSwitchObserver(func() bool {
