@@ -394,16 +394,8 @@ server {
         proxy_set_header Connection "upgrade";
     }
 
-    # 白名单静态资源与接口鉴权
-    location ~ ^/(assets/|api/|terminal|favicon\.ico|manifest\.json|robots\.txt) {
-        set \$auth_ok 0;
-        if (\$cookie_nz_secret_path = "${secret}") { set \$auth_ok 1; }
-        if (\$cookie_gw_secret_path = "${secret}") { set \$auth_ok 1; }
-        if (\$http_x_secret_path = "${secret}") { set \$auth_ok 1; }
-        if (\$http_authorization ~* "^Bearer nzp_") { set \$auth_ok 1; }
-
-        if (\$auth_ok = 0) { return 404; }
-
+    # 前端静态资源与 API（由 Go 后端内置 WAF anti-probe 校验权限与提供防探测保护）
+    location ~ ^/(assets/|dashboard/assets/|api/|terminal|ws/|favicon\.ico|manifest\.json|robots\.txt|apple-touch-icon\.png|android-chrome-.*\.png|logo\.svg|dashboard/logo\.svg|animated-man\.webp|dashboard/animated-man\.webp) {
         proxy_pass http://nezha-dashboard:${port};
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
