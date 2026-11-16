@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.9.2"
+SCRIPT_VERSION="v2.9.3"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -633,6 +633,52 @@ check_and_guard_cert() {
     fi
 }
 
+# 自动检测并全量更新脚本套件（deploy.sh / nezha.sh / watchdog.sh）
+auto_update_scripts() {
+    log "🔍 [看门狗] 检查管理与看门狗脚本套件最新版本..."
+    local tmp_script
+    tmp_script=$(mktemp /tmp/nezha-deploy-XXXXXX.sh)
+    local urls=(
+        "https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+        "https://fastly.jsdelivr.net/gh/opengaoling/nezha-panel@master/deploy.sh"
+        "https://ghfast.top/https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+    )
+    local success=false
+    for u in "${urls[@]}"; do
+        if curl -fsSL --connect-timeout 8 --max-time 30 "$u" -o "$tmp_script" 2>/dev/null; then
+            if [ -s "$tmp_script" ] && bash -n "$tmp_script" >/dev/null 2>&1; then
+                success=true
+                break
+            fi
+        fi
+    done
+    if [ "$success" = "true" ]; then
+        local remote_ver
+        remote_ver=$(grep -E '^SCRIPT_VERSION=' "$tmp_script" | head -n1 | cut -d= -f2 | tr -d ' "\r\n')
+        local local_ver=""
+        if [ -f "$BASE_DIR/nezha.sh" ]; then
+            local_ver=$(grep -E '^VERSION=' "$BASE_DIR/nezha.sh" | head -n1 | cut -d= -f2 | tr -d ' "\r\n')
+        fi
+        if [ -n "$remote_ver" ] && [ "$remote_ver" != "$local_ver" ]; then
+            if [ -z "$local_ver" ] || [ "$(printf '%s\n%s' "$remote_ver" "$local_ver" | sort -V 2>/dev/null | head -n1)" = "$local_ver" ]; then
+                log "⬆️  检测到新版本脚本套件 ($local_ver -> $remote_ver)，自动全量更新与同步..."
+                bash "$tmp_script" sync-tools --dir "$BASE_DIR" >/dev/null 2>&1 || true
+                if [ -f "$CRON_FILE" ]; then
+                    enable_cron "$DEFAULT_SCHEDULE" >/dev/null 2>&1 || true
+                fi
+                log "✅ 管理、部署与看门狗脚本套件已成功自动更新至: $remote_ver"
+            else
+                log "ℹ️  本地脚本套件版本 ($local_ver) 高于或等于远端版本 ($remote_ver)，无需更新。"
+            fi
+        else
+            log "✅ 脚本套件状态正常，当前已是最新版 (${local_ver:-$remote_ver})。"
+        fi
+    else
+        log "⚠️  检查脚本套件更新网络超时，保持当前脚本版本运行。"
+    fi
+    rm -f "$tmp_script" 2>/dev/null || true
+}
+
 # 核心检查与更新逻辑
 run_check() {
     # 0. 防止任务重叠的并发文件锁保护 (flock)
@@ -646,6 +692,7 @@ run_check() {
 
     log "===================================================================="
     check_and_guard_cert
+    auto_update_scripts
     log "🔍 [看门狗] 开始检查哪吒监控面板镜像更新..."
 
     # 1. 获取当前容器对应的镜像 ID (SHA256) 与准确运行状态
@@ -781,38 +828,11 @@ disable_cron() {
     echo "✅ 看门狗定时任务已停用。"
 }
 
-# 更新看门狗脚本自身至 GitHub 最新版本
-update_watchdog() {
-    echo "正在从 GitHub 获取最新的部署脚本以更新看门狗..."
-    local tmp_script
-    tmp_script=$(mktemp /tmp/nezha-deploy-XXXXXX.sh)
-    local urls=(
-        "https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
-        "https://fastly.jsdelivr.net/gh/opengaoling/nezha-panel@master/deploy.sh"
-        "https://ghfast.top/https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
-    )
-    local success=false
-    for u in "${urls[@]}"; do
-        if curl -fsSL --connect-timeout 8 --max-time 30 "$u" -o "$tmp_script" 2>/dev/null; then
-            if [ -s "$tmp_script" ] && bash -n "$tmp_script" >/dev/null 2>&1; then
-                success=true
-                break
-            fi
-        fi
-    done
-    if [ "$success" = "true" ]; then
-        bash "$tmp_script" sync-tools --dir "$BASE_DIR" >/dev/null 2>&1 || true
-        # 若已有定时任务，自动用带 flock 的新配置刷新一次 cron
-        if [ -f "$CRON_FILE" ] || (crontab -l 2>/dev/null | grep -q "watchdog.sh"); then
-            enable_cron "$DEFAULT_SCHEDULE" >/dev/null 2>&1 || true
-        fi
-        rm -f "$tmp_script" 2>/dev/null || true
-        echo "✅ 看门狗脚本与定时任务已成功更新至最新版！"
-    else
-        echo "❌ 获取最新脚本失败，请检查网络连接。"
-        rm -f "$tmp_script" 2>/dev/null || true
-        return 1
-    fi
+# 手动触发全量更新部署、管理与看门狗脚本套件
+update_all_scripts() {
+    echo "正在从 GitHub 获取最新的部署与管理套件以更新所有脚本..."
+    auto_update_scripts
+    echo "✅ 部署、管理与看门狗脚本套件更新完毕！"
 }
 
 # 查看看门狗状态
@@ -872,7 +892,7 @@ case "${1:-run}" in
         disable_cron
         ;;
     update|upgrade)
-        update_watchdog
+        update_all_scripts
         ;;
     status)
         status_cron
@@ -885,7 +905,7 @@ case "${1:-run}" in
         echo "  run     - 立即执行一次镜像拉取与 SHA256 比对检查，若变化则重建容器"
         echo "  enable  - 启用每日定时执行 (默认 04:30 自动执行，带 flock 并发锁)"
         echo "  disable - 停用每日定时执行"
-        echo "  update  - 从 GitHub 更新看门狗脚本自身至最新版"
+        echo "  update  - 从 GitHub 更新部署、管理与看门狗全套脚本至最新版"
         echo "  status  - 查看当前看门狗定时任务配置与最近更新日志"
         echo "  logs    - 跟踪查看详细运行日志"
         exit 1
@@ -1040,7 +1060,7 @@ generate_nezha_script() {
     cat > "$target_dir/nezha.sh" << 'NEZHA_SH_EOF'
 #!/usr/bin/env bash
 # Nezha Dashboard Management Tool (Docker Nginx + acme.sh Edition)
-VERSION="v2.9.2"
+VERSION="v2.9.3"
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -1259,26 +1279,70 @@ watchdog_menu() {
         echo "  3. 停用每日自动更新看门狗"
         echo "  4. 查看看门狗运行状态与最近更新日志"
         echo "  5. 实时追踪看门狗运行日志"
-        echo "  6. 更新看门狗脚本自身至 GitHub 最新版"
         echo "  ----------------------------------------------------------------------------"
         echo "  0. 返回上级菜单"
         echo ""
-        read -r -p "👉 请输入选择 [0-6]: " wd_choice
+        read -r -p "👉 请输入选择 [0-5]: " wd_choice
         case "$wd_choice" in
             1) bash "$BASE_DIR/watchdog.sh" run; press_any_key ;;
             2) bash "$BASE_DIR/watchdog.sh" enable; press_any_key ;;
             3) bash "$BASE_DIR/watchdog.sh" disable; press_any_key ;;
             4) bash "$BASE_DIR/watchdog.sh" status; press_any_key ;;
             5) bash "$BASE_DIR/watchdog.sh" logs ;;
-            6) bash "$BASE_DIR/watchdog.sh" update; press_any_key ;;
             0|b|B|q|Q) break ;;
             *) echo "无效输入，请重新选择。"; sleep 1 ;;
         esac
     done
 }
 
+# 自动检查并提示更新脚本套件
+check_for_updates() {
+    local cache_file="/tmp/.nezha_update_check"
+    local now
+    now=$(date +%s)
+    if [ -f "$cache_file" ]; then
+        local last_check
+        last_check=$(head -n1 "$cache_file" 2>/dev/null || echo 0)
+        if [ $((now - last_check)) -lt 300 ]; then
+            return 0
+        fi
+    fi
+    echo "$now" > "$cache_file" 2>/dev/null || true
+
+    local remote_ver=""
+    local urls=(
+        "https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+        "https://fastly.jsdelivr.net/gh/opengaoling/nezha-panel@master/deploy.sh"
+        "https://ghfast.top/https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+    )
+    for u in "${urls[@]}"; do
+        remote_ver=$(curl -fsSL --connect-timeout 2 --max-time 4 "$u" 2>/dev/null | grep -E '^SCRIPT_VERSION=' | head -n1 | cut -d= -f2 | tr -d ' "\r\n')
+        if [ -n "$remote_ver" ]; then
+            break
+        fi
+    done
+
+    if [ -n "$remote_ver" ] && [ "$remote_ver" != "${VERSION:-$SCRIPT_VERSION}" ] && [ "$(printf '%s\n%s' "$remote_ver" "${VERSION:-$SCRIPT_VERSION}" | sort -V 2>/dev/null | head -n1)" = "${VERSION:-$SCRIPT_VERSION}" ]; then
+        echo ""
+        echo -e "\033[1;33m🔔 发现脚本套件新版本: ${remote_ver} (当前版本: ${VERSION:-$SCRIPT_VERSION})\033[0m"
+        local do_up=""
+        read -r -t 8 -p "👉 是否立即自动更新所有部署与管理脚本套件？[Y/n]: " do_up || do_up="y"
+        case "$do_up" in
+            [nN]*)
+                echo "已跳过更新。"
+                ;;
+            *)
+                update_script
+                echo "脚本套件已更新完成，正在重新加载控制台..."
+                sleep 1
+                exec "$0" "$@"
+                ;;
+        esac
+    fi
+}
+
 update_script() {
-    echo "正在从 GitHub 获取最新的部署与管理脚本..."
+    echo "正在从 GitHub 获取最新的部署与管理套件以更新所有脚本..."
     local tmp_script
     tmp_script=$(mktemp /tmp/nezha-deploy-XXXXXX.sh)
     local urls=(
@@ -1305,6 +1369,7 @@ update_script() {
 }
 
 show_menu() {
+    check_for_updates
     while true; do
         clear 2>/dev/null || true
         echo "============================================================================"
@@ -1319,7 +1384,7 @@ show_menu() {
         echo "  7. 查看 Nginx 网关日志 (Nginx Logs)"
         echo "  8. 查看 acme.sh 续期日志 (acme.sh Logs)"
         echo "  9. 平滑更新面板镜像 (Update)"
-        echo "  u. 更新管理与部署脚本自身 (Update Script)"
+        echo "  u. 更新管理、部署与看门狗脚本套件 (Update All Scripts)"
         echo "  a. 查看 SSL 证书状态 (SSL Cert Info)"
         echo "  b. 重新加载 Nginx 配置 (Reload Nginx)"
         echo "  c. 系统清理与维护 (Docker 缓存清理 / 日志截断 / 彻底卸载)"
@@ -1805,7 +1870,10 @@ update_self_script() {
             generate_watchdog_script "$target_dir" 2>/dev/null || true
         }
         ln -sf "$target_dir/nezha.sh" /usr/local/bin/nezha 2>/dev/null || true
-        log_ok "已同步更新 ${target_dir}/nezha.sh 与 /usr/local/bin/nezha"
+        if [ -f "/etc/cron.d/nezha-watchdog" ] || (crontab -l 2>/dev/null | grep -q "watchdog.sh"); then
+            bash "$target_dir/watchdog.sh" enable >/dev/null 2>&1 || true
+        fi
+        log_ok "已同步更新 ${target_dir}/nezha.sh、watchdog.sh 与 /usr/local/bin/nezha"
     fi
 
     rm -f "$tmp_file" 2>/dev/null || true
@@ -1813,7 +1881,54 @@ update_self_script() {
     log_ok "🎉 部署与管理脚本全部更新完毕 (当前版本: ${new_version})！"
 }
 
+# 自动检测并提示更新部署脚本套件
+check_deploy_script_update() {
+    local cache_file="/tmp/.nezha_deploy_update_check"
+    local now
+    now=$(date +%s)
+    if [ -f "$cache_file" ]; then
+        local last_check
+        last_check=$(head -n1 "$cache_file" 2>/dev/null || echo 0)
+        if [ $((now - last_check)) -lt 300 ]; then
+            return 0
+        fi
+    fi
+    echo "$now" > "$cache_file" 2>/dev/null || true
+
+    local remote_ver=""
+    local urls=(
+        "https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+        "https://fastly.jsdelivr.net/gh/opengaoling/nezha-panel@master/deploy.sh"
+        "https://ghfast.top/https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+    )
+    for u in "${urls[@]}"; do
+        remote_ver=$(curl -fsSL --connect-timeout 2 --max-time 4 "$u" 2>/dev/null | grep -E '^SCRIPT_VERSION=' | head -n1 | cut -d= -f2 | tr -d ' "\r\n')
+        if [ -n "$remote_ver" ]; then
+            break
+        fi
+    done
+
+    if [ -n "$remote_ver" ] && [ "$remote_ver" != "$SCRIPT_VERSION" ] && [ "$(printf '%s\n%s' "$remote_ver" "$SCRIPT_VERSION" | sort -V 2>/dev/null | head -n1)" = "$SCRIPT_VERSION" ]; then
+        echo ""
+        echo -e "\033[1;33m🔔 发现部署脚本新版本: ${remote_ver} (当前版本: ${SCRIPT_VERSION})\033[0m"
+        local do_up=""
+        read -r -t 8 -p "👉 是否立即自动更新所有部署、管理与看门狗脚本套件？[Y/n]: " do_up || do_up="y"
+        case "$do_up" in
+            [nN]*)
+                echo "已跳过更新。"
+                ;;
+            *)
+                update_self_script
+                echo "脚本套件已更新完成，正在重新加载菜单..."
+                sleep 1
+                exec "$0" "$@"
+                ;;
+        esac
+    fi
+}
+
 show_main_menu() {
+    check_deploy_script_update
     while true; do
         print_banner
         echo -e "${GREEN}${BOLD}  1.${NC} 安装 / 重新部署哪吒面板 (Install / Redeploy)"
@@ -1826,7 +1941,7 @@ show_main_menu() {
         echo -e "${GREEN}${BOLD}  8.${NC} 查看 acme.sh 续期日志 (acme.sh Logs)"
         echo -e "${GREEN}${BOLD}  9.${NC} 平滑更新面板镜像版本 (Update Image)"
         echo -e "${CYAN}${BOLD} 10.${NC} 安装 / 启用看门狗自动更新服务 (Install Watchdog)"
-        echo -e "${CYAN}${BOLD} 11.${NC} 更新一键部署管理脚本自身 (Update Script)"
+        echo -e "${CYAN}${BOLD} 11.${NC} 更新部署、管理与看门狗脚本套件 (Update All Scripts)"
         echo -e "${YELLOW}${BOLD}  c.${NC} 系统清理与维护 (Docker 缓存清理 / 日志截断 / 卸载清理)"
         echo -e "${CYAN}${BOLD}  d.${NC} 看门狗详细设置与日志跟踪 (Watchdog Menu)"
         echo -e "  ----------------------------------------------------------------------------"
