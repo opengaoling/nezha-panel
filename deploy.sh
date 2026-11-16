@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.9.1"
+SCRIPT_VERSION="v2.9.2"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -567,6 +567,8 @@ CONTAINER_NAME="nezha-dashboard"
 LOG_FILE="/var/log/nezha-watchdog.log"
 CRON_FILE="/etc/cron.d/nezha-watchdog"
 DEFAULT_SCHEDULE="30 4 * * *"
+LOCK_FILE="/run/nezha-watchdog.lock"
+[ ! -d "/run" ] && LOCK_FILE="/tmp/nezha-watchdog.lock"
 
 # 确保日志文件不超过 5MB，超出截断保留最新 1000 行
 rotate_log_if_needed() {
@@ -579,11 +581,15 @@ rotate_log_if_needed() {
     fi
 }
 
+# 统一日志输出（直接写入日志文件；终端交互时输出到屏幕，cron 批处理时单向写入防止日志重复）
 log() {
     rotate_log_if_needed
     local ts
     ts=$(date '+%Y-%m-%d %H:%M:%S')
-    echo "[$ts] $*" | tee -a "$LOG_FILE" 2>/dev/null || echo "[$ts] $*"
+    echo "[$ts] $*" >> "$LOG_FILE" 2>/dev/null || true
+    if [ -t 1 ]; then
+        echo "[$ts] $*"
+    fi
 }
 
 # 检查 SSL 证书健康度并提供续期双保险
@@ -604,10 +610,18 @@ check_and_guard_cert() {
     if ! openssl x509 -checkend 1728000 -noout -in "$cert_file" >/dev/null 2>&1; then
         log "⚠️  证书将在 20 天内到期，主动触发 acme.sh 续期检查..."
         if docker ps --format '{{.Names}}' | grep -Eq '^nezha-acme$'; then
-            docker exec nezha-acme /usr/local/bin/acme.sh --cron --home /acme.sh 2>&1 | tee -a "$LOG_FILE" || true
+            if [ -t 1 ]; then
+                docker exec nezha-acme /usr/local/bin/acme.sh --cron --home /acme.sh 2>&1 | tee -a "$LOG_FILE" || true
+            else
+                docker exec nezha-acme /usr/local/bin/acme.sh --cron --home /acme.sh >> "$LOG_FILE" 2>&1 || true
+            fi
         else
             log "⚠️  未检测到 nezha-acme 容器运行，尝试拉起..."
-            $CMD up -d acme 2>&1 | tee -a "$LOG_FILE" || true
+            if [ -t 1 ]; then
+                $CMD up -d acme 2>&1 | tee -a "$LOG_FILE" || true
+            else
+                $CMD up -d acme >> "$LOG_FILE" 2>&1 || true
+            fi
         fi
     else
         log "✅ SSL 证书状态正常（距到期超过 20 天）。"
@@ -621,27 +635,47 @@ check_and_guard_cert() {
 
 # 核心检查与更新逻辑
 run_check() {
+    # 0. 防止任务重叠的并发文件锁保护 (flock)
+    if command -v flock >/dev/null 2>&1; then
+        exec 200>"$LOCK_FILE"
+        if ! flock -n 200; then
+            log "⚠️  检测到已有看门狗任务正在执行中，跳过本次触发。"
+            return 0
+        fi
+    fi
+
     log "===================================================================="
     check_and_guard_cert
     log "🔍 [看门狗] 开始检查哪吒监控面板镜像更新..."
 
-    # 1. 获取当前运行容器对应的镜像 ID (SHA256)
+    # 1. 获取当前容器对应的镜像 ID (SHA256) 与准确运行状态
     local current_id=""
+    local is_running="false"
     if docker ps -a --format '{{.Names}}' | grep -Eq "^${CONTAINER_NAME}\$"; then
         current_id=$(docker inspect --format='{{.Image}}' "$CONTAINER_NAME" 2>/dev/null || true)
+        is_running=$(docker inspect --format='{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || echo "false")
     fi
 
-    if [ -n "$current_id" ]; then
-        log "📌 当前容器正在运行，镜像 ID: ${current_id}"
+    if [ "$is_running" = "true" ]; then
+        log "📌 当前容器正在运行中，镜像 ID: ${current_id}"
+    elif [ -n "$current_id" ]; then
+        log "⚠️  当前容器存在但处于停止状态 (Running: false)，镜像 ID: ${current_id}，稍后将自动重建启动。"
     else
-        log "⚠️  未检测到运行中的 ${CONTAINER_NAME} 容器。"
+        log "⚠️  未检测到运行中的 ${CONTAINER_NAME} 容器实例。"
     fi
 
     # 2. 拉取远端最新镜像
     log "⬇️ 正在拉取远端最新镜像: ${IMAGE_NAME} ..."
-    if ! docker pull "$IMAGE_NAME" 2>&1 | tee -a "$LOG_FILE"; then
-        log "❌ 镜像拉取失败，请检查主机网络与 GitHub Container Registry 连接。"
-        return 1
+    if [ -t 1 ]; then
+        if ! docker pull "$IMAGE_NAME" 2>&1 | tee -a "$LOG_FILE"; then
+            log "❌ 镜像拉取失败，请检查主机网络与 GitHub Container Registry 连接。"
+            return 1
+        fi
+    else
+        if ! docker pull "$IMAGE_NAME" >> "$LOG_FILE" 2>&1; then
+            log "❌ 镜像拉取失败，请检查主机网络与 GitHub Container Registry 连接。"
+            return 1
+        fi
     fi
 
     # 3. 获取拉取后本地最新镜像 ID (SHA256)
@@ -656,19 +690,30 @@ run_check() {
     log "🌐 远端最新镜像 ID: ${latest_id}"
 
     # 4. 对比 SHA256 镜像哈希
-    if [ -n "$current_id" ] && [ "$current_id" = "$latest_id" ]; then
+    if [ -n "$current_id" ] && [ "$current_id" = "$latest_id" ] && [ "$is_running" = "true" ]; then
         log "✅ 镜像未发生变化 (SHA256: ${latest_id:0:19}...)，当前运行已是最新版，无需重建。"
         log "===================================================================="
         return 0
     fi
 
-    # 5. SHA256 发生变化或容器尚未运行，执行平滑重建
-    log "⚡ 检测到镜像 SHA256 变动!"
+    # 5. SHA256 发生变化或容器停止/不存在，执行平滑重建
+    log "⚡ 检测到镜像更新或容器需要重建启动!"
     log "   旧镜像: ${current_id:-<无运行实例>}"
     log "   新镜像: ${latest_id}"
     log "🔄 正在平滑重建 ${CONTAINER_NAME} 容器 (保持 nginx/acme 独立运行不受影响)..."
 
-    if $CMD up -d --force-recreate --no-deps "$CONTAINER_NAME" 2>&1 | tee -a "$LOG_FILE"; then
+    local recreate_ok=false
+    if [ -t 1 ]; then
+        if $CMD up -d --force-recreate --no-deps "$CONTAINER_NAME" 2>&1 | tee -a "$LOG_FILE"; then
+            recreate_ok=true
+        fi
+    else
+        if $CMD up -d --force-recreate --no-deps "$CONTAINER_NAME" >> "$LOG_FILE" 2>&1; then
+            recreate_ok=true
+        fi
+    fi
+
+    if [ "$recreate_ok" = "true" ]; then
         log "✅ ${CONTAINER_NAME} 容器已平滑重建完成并运行最新镜像！"
 
         # 6. 清理旧悬空镜像释放磁盘
@@ -691,17 +736,23 @@ enable_cron() {
 
     echo "正在配置看门狗定时更新任务 (计划: ${schedule})..."
 
+    # 检查并优先使用 flock 防止并发重叠执行
+    local flock_prefix=""
+    if command -v flock >/dev/null 2>&1; then
+        flock_prefix="flock -n /run/nezha-watchdog.lock "
+    fi
+
     if [ ! -d "/etc/cron.d" ]; then
         echo "⚠️  未找到 /etc/cron.d 目录，尝试使用 crontab 配置..."
-        (crontab -l 2>/dev/null | grep -v "${script_path}"; echo "${schedule} ${script_path} run >> ${LOG_FILE} 2>&1") | crontab -
+        (crontab -l 2>/dev/null | grep -v "${script_path}"; echo "${schedule} ${flock_prefix}${script_path} run >/dev/null 2>&1") | crontab -
     else
         cat > "$CRON_FILE" << EOF
 # Nezha Dashboard Watchdog (Auto-Update GHCR Image)
-# 每日定时拉取 GHCR 镜像并比对 SHA256 重建容器
+# 每日定时拉取 GHCR 镜像并比对 SHA256 重建容器 (flock 并发锁保护)
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-${schedule} root ${script_path} run >> ${LOG_FILE} 2>&1
+${schedule} root ${flock_prefix}${script_path} run >/dev/null 2>&1
 EOF
         chmod 0644 "$CRON_FILE"
     fi
@@ -715,6 +766,7 @@ EOF
 
     echo "✅ 看门狗每日自动更新已成功启用！"
     echo "   执行频率: 每天 04:30 (${schedule})"
+    echo "   并发保护: flock 文件锁 (/run/nezha-watchdog.lock)"
     echo "   任务配置: ${CRON_FILE}"
     echo "   运行日志: ${LOG_FILE}"
 }
@@ -727,6 +779,40 @@ disable_cron() {
         crontab -l 2>/dev/null | grep -v "watchdog.sh" | crontab - 2>/dev/null || true
     fi
     echo "✅ 看门狗定时任务已停用。"
+}
+
+# 更新看门狗脚本自身至 GitHub 最新版本
+update_watchdog() {
+    echo "正在从 GitHub 获取最新的部署脚本以更新看门狗..."
+    local tmp_script
+    tmp_script=$(mktemp /tmp/nezha-deploy-XXXXXX.sh)
+    local urls=(
+        "https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+        "https://fastly.jsdelivr.net/gh/opengaoling/nezha-panel@master/deploy.sh"
+        "https://ghfast.top/https://raw.githubusercontent.com/opengaoling/nezha-panel/master/deploy.sh"
+    )
+    local success=false
+    for u in "${urls[@]}"; do
+        if curl -fsSL --connect-timeout 8 --max-time 30 "$u" -o "$tmp_script" 2>/dev/null; then
+            if [ -s "$tmp_script" ] && bash -n "$tmp_script" >/dev/null 2>&1; then
+                success=true
+                break
+            fi
+        fi
+    done
+    if [ "$success" = "true" ]; then
+        bash "$tmp_script" sync-tools --dir "$BASE_DIR" >/dev/null 2>&1 || true
+        # 若已有定时任务，自动用带 flock 的新配置刷新一次 cron
+        if [ -f "$CRON_FILE" ] || (crontab -l 2>/dev/null | grep -q "watchdog.sh"); then
+            enable_cron "$DEFAULT_SCHEDULE" >/dev/null 2>&1 || true
+        fi
+        rm -f "$tmp_script" 2>/dev/null || true
+        echo "✅ 看门狗脚本与定时任务已成功更新至最新版！"
+    else
+        echo "❌ 获取最新脚本失败，请检查网络连接。"
+        rm -f "$tmp_script" 2>/dev/null || true
+        return 1
+    fi
 }
 
 # 查看看门狗状态
@@ -750,8 +836,11 @@ status_cron() {
     cur_id=$(docker inspect --format='{{.Image}}' "$CONTAINER_NAME" 2>/dev/null || echo "未运行")
     local img_id
     img_id=$(docker inspect --format='{{.Id}}' "$IMAGE_NAME" 2>/dev/null || echo "未拉取")
-    echo "当前运行容器镜像: ${cur_id}"
-    echo "本地最新镜像 ID : ${img_id}"
+    local is_run
+    is_run=$(docker inspect --format='{{.State.Running}}' "$CONTAINER_NAME" 2>/dev/null || echo "false")
+    echo "容器运行状态: [${is_run}] (Running: ${is_run})"
+    echo "当前运行镜像: ${cur_id}"
+    echo "本地最新镜像: ${img_id}"
 
     echo ""
     echo "=== 最近看门狗执行日志 (最近 15 行) ==="
@@ -782,6 +871,9 @@ case "${1:-run}" in
     disable|uninstall)
         disable_cron
         ;;
+    update|upgrade)
+        update_watchdog
+        ;;
     status)
         status_cron
         ;;
@@ -789,10 +881,11 @@ case "${1:-run}" in
         view_logs
         ;;
     *)
-        echo "用法: $0 {run|enable|disable|status|logs}"
+        echo "用法: $0 {run|enable|disable|status|logs|update}"
         echo "  run     - 立即执行一次镜像拉取与 SHA256 比对检查，若变化则重建容器"
-        echo "  enable  - 启用每日定时执行 (默认 04:30 自动执行)"
+        echo "  enable  - 启用每日定时执行 (默认 04:30 自动执行，带 flock 并发锁)"
         echo "  disable - 停用每日定时执行"
+        echo "  update  - 从 GitHub 更新看门狗脚本自身至最新版"
         echo "  status  - 查看当前看门狗定时任务配置与最近更新日志"
         echo "  logs    - 跟踪查看详细运行日志"
         exit 1
@@ -947,7 +1040,7 @@ generate_nezha_script() {
     cat > "$target_dir/nezha.sh" << 'NEZHA_SH_EOF'
 #!/usr/bin/env bash
 # Nezha Dashboard Management Tool (Docker Nginx + acme.sh Edition)
-VERSION="v2.9.0"
+VERSION="v2.9.2"
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -1166,16 +1259,18 @@ watchdog_menu() {
         echo "  3. 停用每日自动更新看门狗"
         echo "  4. 查看看门狗运行状态与最近更新日志"
         echo "  5. 实时追踪看门狗运行日志"
+        echo "  6. 更新看门狗脚本自身至 GitHub 最新版"
         echo "  ----------------------------------------------------------------------------"
         echo "  0. 返回上级菜单"
         echo ""
-        read -r -p "👉 请输入选择 [0-5]: " wd_choice
+        read -r -p "👉 请输入选择 [0-6]: " wd_choice
         case "$wd_choice" in
             1) bash "$BASE_DIR/watchdog.sh" run; press_any_key ;;
             2) bash "$BASE_DIR/watchdog.sh" enable; press_any_key ;;
             3) bash "$BASE_DIR/watchdog.sh" disable; press_any_key ;;
             4) bash "$BASE_DIR/watchdog.sh" status; press_any_key ;;
             5) bash "$BASE_DIR/watchdog.sh" logs ;;
+            6) bash "$BASE_DIR/watchdog.sh" update; press_any_key ;;
             0|b|B|q|Q) break ;;
             *) echo "无效输入，请重新选择。"; sleep 1 ;;
         esac
@@ -1307,6 +1402,9 @@ case "$1" in
     watchdog)
         shift
         bash "$BASE_DIR/watchdog.sh" "$@"
+        ;;
+    update-watchdog)
+        bash "$BASE_DIR/watchdog.sh" update
         ;;
     uninstall)
         clean_uninstall_all
@@ -1776,6 +1874,7 @@ show_usage() {
     echo "  vacuum        压缩与整理 SQLite 数据库释放物理磁盘空间"
     echo "  watchdog-install, install-watchdog 安装并启用看门狗自动更新服务 (每日自动比对 SHA256 重建)"
     echo "  watchdog      配置或运行看门狗镜像自动更新守护 (每日拉取对比 SHA256)"
+    echo "  update-watchdog 更新看门狗脚本自身至 GitHub 最新版"
     echo "  info          查看当前配置与访问链接"
     echo "  uninstall     彻底卸载并清理全部数据与证书"
     echo ""
@@ -1814,6 +1913,7 @@ parse_args() {
             cert) ACTION="cert"; shift ;;
             update) ACTION="update"; shift ;;
             update-script|self-update) ACTION="update-script"; shift ;;
+            update-watchdog|watchdog-update) ACTION="update-watchdog"; shift ;;
             sync-tools) ACTION="sync-tools"; shift ;;
             vacuum|clean-db) ACTION="vacuum"; shift ;;
             install-watchdog|watchdog-install) ACTION="install-watchdog"; shift ;;
@@ -1851,6 +1951,7 @@ main() {
             cert) service_cert ;;
             update) service_update ;;
             update-script) update_self_script ;;
+            update-watchdog) bash "$target_dir/watchdog.sh" update ;;
             sync-tools)
                 generate_nezha_script "$target_dir"
                 generate_watchdog_script "$target_dir"
