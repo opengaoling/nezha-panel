@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.9.0"
+SCRIPT_VERSION="v2.9.1"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -408,6 +408,7 @@ server {
         grpc_read_timeout 86400s;
         grpc_send_timeout 86400s;
         grpc_buffer_size 32k;
+        access_log off;
     }
 
     # 安全路径前缀
@@ -452,6 +453,11 @@ services:
     image: ${DOCKER_IMAGE}
     container_name: nezha-dashboard
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "${port}:${port}"
     environment:
@@ -479,6 +485,11 @@ services:
     image: ${NGINX_IMAGE}
     container_name: nezha-nginx
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     ports:
       - "80:80"
       - "443:443"
@@ -499,6 +510,11 @@ services:
     image: ${ACME_IMAGE}
     container_name: nezha-acme
     restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
     environment:
       - TZ=Asia/Shanghai
     volumes:
@@ -570,9 +586,43 @@ log() {
     echo "[$ts] $*" | tee -a "$LOG_FILE" 2>/dev/null || echo "[$ts] $*"
 }
 
+# 检查 SSL 证书健康度并提供续期双保险
+check_and_guard_cert() {
+    local ssl_dir="${BASE_DIR}/ssl"
+    [ ! -d "$ssl_dir" ] && return 0
+
+    local cert_file
+    cert_file=$(find "$ssl_dir" -maxdepth 1 -name "*.crt" 2>/dev/null | head -n1)
+    [ -z "$cert_file" ] && return 0
+
+    log "🔒 [SSL 守护] 检查 SSL 证书状态与有效期..."
+    local expiry
+    expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d= -f2)
+    log "   证书到期时间: ${expiry:-未知}"
+
+    # 1. 检查证书是否在 20 天内到期 (acme.sh 默认 30 天起续期，若距到期小于 20 天说明日常自动续期可能未生效，主动触发补偿)
+    if ! openssl x509 -checkend 1728000 -noout -in "$cert_file" >/dev/null 2>&1; then
+        log "⚠️  证书将在 20 天内到期，主动触发 acme.sh 续期检查..."
+        if docker ps --format '{{.Names}}' | grep -Eq '^nezha-acme$'; then
+            docker exec nezha-acme /usr/local/bin/acme.sh --cron --home /acme.sh 2>&1 | tee -a "$LOG_FILE" || true
+        else
+            log "⚠️  未检测到 nezha-acme 容器运行，尝试拉起..."
+            $CMD up -d acme 2>&1 | tee -a "$LOG_FILE" || true
+        fi
+    else
+        log "✅ SSL 证书状态正常（距到期超过 20 天）。"
+    fi
+
+    # 2. 紧急阈值告警 (小于 7 天)
+    if ! openssl x509 -checkend 604800 -noout -in "$cert_file" >/dev/null 2>&1; then
+        log "🚨 [紧急告警] 证书距到期不足 7 天！请排查 acme.sh 续签日志！"
+    fi
+}
+
 # 核心检查与更新逻辑
 run_check() {
     log "===================================================================="
+    check_and_guard_cert
     log "🔍 [看门狗] 开始检查哪吒监控面板镜像更新..."
 
     # 1. 获取当前运行容器对应的镜像 ID (SHA256)
@@ -809,21 +859,21 @@ prepare_and_issue_ssl() {
                 -w /var/www/html 2>&1 || true
         }
 
-        # 安装证书并绑定自动 reload 钩子
+        # 安装证书并绑定自动 reload 钩子（先 nginx -t 语法测试通过再 reload，杜绝半截证书）
         docker exec nezha-acme apk add --no-cache docker-cli >/dev/null 2>&1 || true
         docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
             -d "${domain}" \
             --ecc \
             --key-file "/ssl/${domain}.key" \
             --fullchain-file "/ssl/${domain}.crt" \
-            --reloadcmd "docker exec nezha-nginx nginx -s reload" 2>&1 || {
+            --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" 2>&1 || {
             docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
                 -d "${domain}" \
                 --key-file "/ssl/${domain}.key" \
                 --fullchain-file "/ssl/${domain}.crt" \
-                --reloadcmd "docker exec nezha-nginx nginx -s reload" 2>&1 || true
+                --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" 2>&1 || true
         }
-        docker exec nezha-nginx nginx -s reload 2>/dev/null || true
+        docker exec nezha-nginx nginx -t 2>/dev/null && docker exec nezha-nginx nginx -s reload 2>/dev/null || true
     fi
 }
 
