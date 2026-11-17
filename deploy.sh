@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.9.6"
+SCRIPT_VERSION="v2.9.7"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -676,10 +676,14 @@ check_and_guard_cert() {
             [ -f "${BASE_DIR}/.env" ] && email="$(grep -E '^EMAIL=' "${BASE_DIR}/.env" 2>/dev/null | cut -d= -f2 | tr -d ' "\r\n')"
             [ -n "$email" ] && docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" >/dev/null 2>&1 || true
 
+            # 清除可能残留的半成品无效配置目录（彻底打破 Skipping invalid cert 死锁）
+            docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
+
             local issued=false
             if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
                 -d "${domain}" \
                 -w /var/www/html \
+                --force \
                 --server letsencrypt >> "$LOG_FILE" 2>&1; then
                 issued=true
             elif docker exec nezha-acme /usr/local/bin/acme.sh --issue \
@@ -1090,10 +1094,21 @@ prepare_and_issue_ssl() {
     local compose_cmd="$(get_compose_cmd)"
     (cd "$target_dir" && ($compose_cmd pull nginx acme nezha-dashboard || true) && $compose_cmd up -d --remove-orphans)
 
-    # 4. 如果没有被 acme.sh 管理，则通过 acme.sh 多引擎级联签发并配置 reload 钩子
-    if ! docker exec nezha-acme /usr/local/bin/acme.sh --list 2>/dev/null | grep -q "$domain"; then
+    # 4. 检查是否需要申请正式 CA 证书：当前证书仍为自签证书，或者 acme 列表中虽有条目但属于无效草稿 (Le_CertCreateTime 为空)
+    local need_formal_cert=false
+    local cur_chk_iss cur_chk_sub
+    cur_chk_iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/^issuer=//')
+    cur_chk_sub=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/^subject=//')
+    if [ "$cur_chk_iss" = "$cur_chk_sub" ] || echo "$cur_chk_iss" | grep -qi "CN *= *${domain}"; then
+        need_formal_cert=true
+    fi
+
+    if [ "$need_formal_cert" = "true" ]; then
         log_info "正在通过 acme.sh 自动申请 SSL 证书 (优先 Let's Encrypt，自动故障降级)..."
         [ -n "$email" ] && docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" >/dev/null 2>&1 || true
+
+        # 清除可能残留的历史半成品无效配置目录（彻底打破 Skipping invalid cert 死锁）
+        docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
 
         # 探测是否有 Cloudflare 代理特征
         local cf_detected=false
@@ -1107,6 +1122,7 @@ prepare_and_issue_ssl() {
         if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
             -d "${domain}" \
             -w /var/www/html \
+            --force \
             --server letsencrypt 2>&1; then
             issued=true
         else
@@ -1255,7 +1271,7 @@ generate_nezha_script() {
     cat > "$target_dir/nezha.sh" << 'NEZHA_SH_EOF'
 #!/usr/bin/env bash
 # Nezha Dashboard Management Tool (Docker Nginx + acme.sh Edition)
-VERSION="v2.9.6"
+VERSION="v2.9.7"
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
