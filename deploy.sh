@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.9.3"
+SCRIPT_VERSION="v2.9.4"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -81,8 +81,46 @@ install_dependencies() {
 check_install_docker() {
     if ! command -v docker >/dev/null 2>&1; then
         log_warn "未检测到 Docker 环境，正在使用官方脚本自动安装 Docker..."
-        curl -fsSL https://get.docker.com | sh
+        curl -fsSL https://get.docker.com | sh || true
         systemctl enable --now docker 2>/dev/null || service docker start 2>/dev/null || true
+    fi
+
+    # 如果官方脚本安装失败（常见于 Ubuntu 20.04 focal 等已 EOL 发行版或官方源网络问题），自动回退至系统源
+    if ! command -v docker >/dev/null 2>&1; then
+        log_warn "官方 Docker 脚本安装未成功，尝试通过系统包管理器安装基础 Docker 环境..."
+        if command -v apt-get >/dev/null 2>&1; then
+            DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq docker.io || true
+        elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y -q docker || true
+        elif command -v yum >/dev/null 2>&1; then
+            yum install -y -q docker || true
+        elif command -v apk >/dev/null 2>&1; then
+            apk add --no-cache docker || true
+        fi
+        systemctl enable --now docker 2>/dev/null || service docker start 2>/dev/null || true
+    fi
+
+    # 严格检验 docker 命令是否存在
+    if ! command -v docker >/dev/null 2>&1; then
+        log_err "Docker 安装失败！系统 PATH 中未能检测到 docker 命令。"
+        echo -e "${YELLOW}可能原因与排查建议：${NC}"
+        echo -e " 1. 当前 Linux 发行版（如 Ubuntu 20.04 focal）已到达官方标准支持寿命 (EOL)，官方 Docker 脚本停止维护；"
+        echo -e " 2. APT 软件源过期或网络超时。"
+        echo -e " 3. 您可尝试在终端手动执行以下命令安装后重试："
+        echo -e "    ${CYAN}sudo apt update && sudo apt install -y docker.io docker-compose && sudo systemctl enable --now docker${NC}"
+        exit 1
+    fi
+
+    # 检验 Docker 守护进程与 sock 连通性
+    if ! docker info >/dev/null 2>&1; then
+        log_warn "检测到 Docker 守护进程未处于运行状态，正在尝试启动..."
+        systemctl enable --now docker 2>/dev/null || service docker start 2>/dev/null || true
+        sleep 2
+        if ! docker info >/dev/null 2>&1; then
+            log_err "无法连接到 Docker 守护进程 (/var/run/docker.sock)！"
+            echo -e "请检查 Docker 服务状态：${CYAN}systemctl status docker${NC}"
+            exit 1
+        fi
     fi
 
     local has_compose=false
@@ -97,11 +135,11 @@ check_install_docker() {
     if [ "$has_compose" != "true" ]; then
         log_info "正在配置 Docker Compose 插件..."
         if command -v apt-get >/dev/null 2>&1; then
-            DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq docker-compose-v2 || apt-get install -y -qq docker-compose-plugin || true
+            DEBIAN_FRONTEND=noninteractive apt-get update -qq && apt-get install -y -qq docker-compose-v2 || apt-get install -y -qq docker-compose-plugin || apt-get install -y -qq docker-compose || true
         elif command -v dnf >/dev/null 2>&1; then
-            dnf install -y -q docker-compose-plugin || true
+            dnf install -y -q docker-compose-plugin || dnf install -y -q docker-compose || true
         elif command -v yum >/dev/null 2>&1; then
-            yum install -y -q docker-compose-plugin || true
+            yum install -y -q docker-compose-plugin || yum install -y -q docker-compose || true
         fi
 
         if docker compose version >/dev/null 2>&1; then
@@ -120,7 +158,7 @@ check_install_docker() {
             curl -SL "https://github.com/docker/compose/releases/latest/download/docker-compose-linux-${arch}" -o /usr/local/lib/docker/cli-plugins/docker-compose
             chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
             cp /usr/local/lib/docker/cli-plugins/docker-compose /usr/local/bin/docker-compose 2>/dev/null || true
-            COMPOSE_CMD="docker compose"
+            COMPOSE_CMD="$(get_compose_cmd)"
         fi
     fi
 
