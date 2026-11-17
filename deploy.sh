@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.9.4"
+SCRIPT_VERSION="v2.9.5"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -630,7 +630,7 @@ log() {
     fi
 }
 
-# 检查 SSL 证书健康度并提供续期双保险
+# 检查 SSL 证书健康度并提供自动转正与续期双保险
 check_and_guard_cert() {
     local ssl_dir="${BASE_DIR}/ssl"
     [ ! -d "$ssl_dir" ] && return 0
@@ -639,12 +639,69 @@ check_and_guard_cert() {
     cert_file=$(find "$ssl_dir" -maxdepth 1 -name "*.crt" 2>/dev/null | head -n1)
     [ -z "$cert_file" ] && return 0
 
-    log "🔒 [SSL 守护] 检查 SSL 证书状态与有效期..."
+    local domain
+    domain="$(basename "$cert_file" .crt)"
+
+    log "🔒 [SSL 守护] 检查 SSL 证书状态与有效期 (域名: ${domain})..."
     local expiry
     expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d= -f2)
-    log "   证书到期时间: ${expiry:-未知}"
+    local issuer subject
+    issuer=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/^issuer=//')
+    subject=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/^subject=//')
+    log "   证书主体: ${subject}"
+    log "   签发主体: ${issuer}"
+    log "   到期时间: ${expiry:-未知}"
 
-    # 1. 检查证书是否在 20 天内到期 (acme.sh 默认 30 天起续期，若距到期小于 20 天说明日常自动续期可能未生效，主动触发补偿)
+    # 1. 检查是否为临时自签名证书 (自签名证书 issuer 与 subject 一致，或 issuer 包含 CN = domain)
+    local is_self_signed=false
+    if [ "$issuer" = "$subject" ] || echo "$issuer" | grep -qi "CN *= *${domain}"; then
+        is_self_signed=true
+    fi
+
+    if [ "$is_self_signed" = "true" ]; then
+        log "⚠️  [SSL 守护] 检测到当前处于自签名证书状态，正在尝试自动申请 Let's Encrypt / ZeroSSL 正式证书..."
+        if docker ps --format '{{.Names}}' | grep -Eq '^nezha-acme$'; then
+            local email=""
+            [ -f "${BASE_DIR}/.env" ] && email="$(grep -E '^EMAIL=' "${BASE_DIR}/.env" 2>/dev/null | cut -d= -f2 | tr -d ' "\r\n')"
+            [ -n "$email" ] && docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" >/dev/null 2>&1 || true
+
+            local issued=false
+            if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+                -d "${domain}" \
+                -w /var/www/html \
+                --server letsencrypt >> "$LOG_FILE" 2>&1; then
+                issued=true
+            elif docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+                -d "${domain}" \
+                -w /var/www/html >> "$LOG_FILE" 2>&1; then
+                issued=true
+            fi
+
+            if [ "$issued" = "true" ]; then
+                docker exec nezha-acme apk add --no-cache docker-cli >/dev/null 2>&1 || true
+                docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
+                    -d "${domain}" \
+                    --ecc \
+                    --key-file "/ssl/${domain}.key" \
+                    --fullchain-file "/ssl/${domain}.crt" \
+                    --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" >> "$LOG_FILE" 2>&1 || {
+                    docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
+                        -d "${domain}" \
+                        --key-file "/ssl/${domain}.key" \
+                        --fullchain-file "/ssl/${domain}.crt" \
+                        --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" >> "$LOG_FILE" 2>&1 || true
+                }
+                docker exec nezha-nginx nginx -s reload 2>/dev/null || true
+                log "🎉 [SSL 守护] 正式 SSL 证书签发并替换成功！Nginx 已完成平滑重载。"
+                return 0
+            else
+                log "⏳ [SSL 守护] 正式证书签发暂未就绪（DNS 可能尚未在全球完全生效或 80 端口受阻），将在下个周期自动重试。"
+                return 1
+            fi
+        fi
+    fi
+
+    # 2. 检查证书是否在 20 天内到期 (acme.sh 默认 30 天起续期，若距到期小于 20 天说明日常自动续期可能未生效，主动触发补偿)
     if ! openssl x509 -checkend 1728000 -noout -in "$cert_file" >/dev/null 2>&1; then
         log "⚠️  证书将在 20 天内到期，主动触发 acme.sh 续期检查..."
         if docker ps --format '{{.Names}}' | grep -Eq '^nezha-acme$'; then
@@ -665,7 +722,7 @@ check_and_guard_cert() {
         log "✅ SSL 证书状态正常（距到期超过 20 天）。"
     fi
 
-    # 2. 紧急阈值告警 (小于 7 天)
+    # 3. 紧急阈值告警 (小于 7 天)
     if ! openssl x509 -checkend 604800 -noout -in "$cert_file" >/dev/null 2>&1; then
         log "🚨 [紧急告警] 证书距到期不足 7 天！请排查 acme.sh 续签日志！"
     fi
@@ -932,6 +989,9 @@ case "${1:-run}" in
     update|upgrade)
         update_all_scripts
         ;;
+    cert-guard|guard-cert)
+        check_and_guard_cert
+        ;;
     status)
         status_cron
         ;;
@@ -939,13 +999,14 @@ case "${1:-run}" in
         view_logs
         ;;
     *)
-        echo "用法: $0 {run|enable|disable|status|logs|update}"
-        echo "  run     - 立即执行一次镜像拉取与 SHA256 比对检查，若变化则重建容器"
-        echo "  enable  - 启用每日定时执行 (默认 04:30 自动执行，带 flock 并发锁)"
-        echo "  disable - 停用每日定时执行"
-        echo "  update  - 从 GitHub 更新部署、管理与看门狗全套脚本至最新版"
-        echo "  status  - 查看当前看门狗定时任务配置与最近更新日志"
-        echo "  logs    - 跟踪查看详细运行日志"
+        echo "用法: $0 {run|enable|disable|status|logs|update|cert-guard}"
+        echo "  run        - 立即执行一次镜像拉取与 SHA256 比对检查，若变化则重建容器"
+        echo "  enable     - 启用每日定时执行 (默认 04:30 自动执行，带 flock 并发锁)"
+        echo "  disable    - 停用每日定时执行"
+        echo "  update     - 从 GitHub 更新部署、管理与看门狗全套脚本至最新版"
+        echo "  cert-guard - 立即执行 SSL 证书健康检查与自签名证书自动转正"
+        echo "  status     - 查看当前看门狗定时任务配置与最近更新日志"
+        echo "  logs       - 跟踪查看详细运行日志"
         exit 1
         ;;
 esac
@@ -983,8 +1044,8 @@ prepare_and_issue_ssl() {
 
     # 2. 如果没有有效证书，则临时启动自签名证书供 Nginx 启动，再通过 acme.sh 签发
     if [ ! -f "$cert_file" ] || [ ! -f "$key_file" ]; then
-        log_info "生成临时启动证书以引导 Nginx 容器..."
-        openssl req -x509 -nodes -days 1 -newkey rsa:2048 \
+        log_info "生成 10 年期自签名保底证书以引导 Nginx 容器..."
+        openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
             -keyout "$key_file" \
             -out "$cert_file" \
             -subj "/CN=${domain}" >/dev/null 2>&1 || true
@@ -1025,6 +1086,36 @@ prepare_and_issue_ssl() {
                 --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" 2>&1 || true
         }
         docker exec nezha-nginx nginx -t 2>/dev/null && docker exec nezha-nginx nginx -s reload 2>/dev/null || true
+    fi
+
+    # 5. 校验当前最终证书状态并给出反馈；若仍为自签证书，自动激活后台自愈转正守护
+    local current_issuer current_subject
+    current_issuer=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/^issuer=//')
+    current_subject=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/^subject=//')
+    if [ "$current_issuer" = "$current_subject" ] || echo "$current_issuer" | grep -qi "CN *= *${domain}"; then
+        log_warn "初次正式证书申请未立即成功（通常因域名 DNS 解析尚未全球生效或网络延迟）。"
+        log_ok "Nginx 已使用 10 年期自签名证书安全启动，面板已可直接访问！"
+        log_info "💡 [全自动转正] 系统已在后台启动自动探测重试任务（每 3 分钟自动探测一次，持续 30 分钟；且看门狗每日自动巡检）。"
+        log_info "   一旦您的域名解析生效，系统将全自动申请正式证书并无缝热重载 Nginx，无需您手动操作！"
+
+        # 启动后台静默异步探测重试
+        (
+            nohup bash -c '
+            sleep 120
+            for round in {1..10}; do
+                [ ! -f "'"$cert_file"'" ] && exit 0
+                iss=$(openssl x509 -in "'"$cert_file"'" -noout -issuer 2>/dev/null | sed "s/^issuer=//")
+                sub=$(openssl x509 -in "'"$cert_file"'" -noout -subject 2>/dev/null | sed "s/^subject=//")
+                if [ "$iss" != "$sub" ] && ! echo "$iss" | grep -qi "CN *= *'"${domain}"'"; then
+                    exit 0
+                fi
+                bash "'"$target_dir"'/watchdog.sh" cert-guard >/dev/null 2>&1 || true
+                sleep 180
+            done
+            ' >/dev/null 2>&1 &
+        )
+    else
+        log_ok "Let's Encrypt / ZeroSSL 正式公共 CA 证书已签发并成功就绪！"
     fi
 }
 
@@ -1098,7 +1189,7 @@ generate_nezha_script() {
     cat > "$target_dir/nezha.sh" << 'NEZHA_SH_EOF'
 #!/usr/bin/env bash
 # Nezha Dashboard Management Tool (Docker Nginx + acme.sh Edition)
-VERSION="v2.9.3"
+VERSION="v2.9.5"
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
@@ -1306,6 +1397,16 @@ show_cert_info() {
     echo "============================================================================"
 }
 
+reissue_cert() {
+    source "$BASE_DIR/.env" 2>/dev/null || true
+    echo "============================================================================"
+    echo "                      🔒 申请 / 转正 / 续签 SSL 证书                      "
+    echo "============================================================================"
+    bash "$BASE_DIR/watchdog.sh" cert-guard
+    echo ""
+    show_cert_info
+}
+
 watchdog_menu() {
     while true; do
         clear 2>/dev/null || true
@@ -1424,13 +1525,14 @@ show_menu() {
         echo "  9. 平滑更新面板镜像 (Update)"
         echo "  u. 更新管理、部署与看门狗脚本套件 (Update All Scripts)"
         echo "  a. 查看 SSL 证书状态 (SSL Cert Info)"
+        echo "  s. 检查 / 转正 / 续签 SSL 证书 (SSL Cert Guard)"
         echo "  b. 重新加载 Nginx 配置 (Reload Nginx)"
         echo "  c. 系统清理与维护 (Docker 缓存清理 / 日志截断 / 彻底卸载)"
         echo "  d. 镜像更新看门狗守护 (每日 04:30 自动拉取 GHCR 镜像并比对重建)"
         echo "  ----------------------------------------------------------------------------"
         echo "  0. 退出管理控制台"
         echo ""
-        read -r -p "👉 请输入选择 [0-9/a-d/u]: " choice
+        read -r -p "👉 请输入选择 [0-9/a-d/s/u]: " choice
         case "$choice" in
             1) echo "=== 容器运行状态 ==="; $CMD ps; press_any_key ;;
             2) echo "正在启动服务..."; $CMD up -d; press_any_key ;;
@@ -1443,6 +1545,7 @@ show_menu() {
             9) echo "正在平滑更新镜像..."; $CMD pull && $CMD up -d --remove-orphans; press_any_key ;;
             u|U) update_script; press_any_key ;;
             a|A) show_cert_info; press_any_key ;;
+            s|S) reissue_cert; press_any_key ;;
             b|B) docker exec nezha-nginx nginx -s reload && echo "✅ Nginx 重载成功！"; press_any_key ;;
             c|C) cleanup_menu ;;
             d|D) watchdog_menu ;;
@@ -1741,6 +1844,16 @@ service_cert() {
     echo "============================================================================"
 }
 
+reissue_cert() {
+    source "$BASE_DIR/.env" 2>/dev/null || true
+    echo "============================================================================"
+    echo "                      🔒 申请 / 转正 / 续签 SSL 证书                      "
+    echo "============================================================================"
+    bash "$BASE_DIR/watchdog.sh" cert-guard
+    echo ""
+    show_cert_info
+}
+
 service_info() {
     local target_dir="${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}"
     if [ -f "$target_dir/.env" ]; then
@@ -1980,12 +2093,13 @@ show_main_menu() {
         echo -e "${GREEN}${BOLD}  9.${NC} 平滑更新面板镜像版本 (Update Image)"
         echo -e "${CYAN}${BOLD} 10.${NC} 安装 / 启用看门狗自动更新服务 (Install Watchdog)"
         echo -e "${CYAN}${BOLD} 11.${NC} 更新部署、管理与看门狗脚本套件 (Update All Scripts)"
+        echo -e "${CYAN}${BOLD} 12.${NC} 检查 / 转正 / 续签 SSL 证书 (SSL Cert Guard)"
         echo -e "${YELLOW}${BOLD}  c.${NC} 系统清理与维护 (Docker 缓存清理 / 日志截断 / 卸载清理)"
         echo -e "${CYAN}${BOLD}  d.${NC} 看门狗详细设置与日志跟踪 (Watchdog Menu)"
         echo -e "  ----------------------------------------------------------------------------"
         echo -e "${RED}${BOLD}  0.${NC} 退出脚本"
         echo ""
-        read -r -p "👉 请输入选择 [0-11/c/d/u]: " menu_choice
+        read -r -p "👉 请输入选择 [0-12/c/d/s/u]: " menu_choice
         case "$menu_choice" in
             1) do_install; break ;;
             2) service_start; press_any_key ;;
@@ -1998,6 +2112,7 @@ show_main_menu() {
             9) service_update; press_any_key ;;
             10|w|W) service_install_watchdog; press_any_key ;;
             11|u|U) update_self_script; press_any_key ;;
+            12|s|S) bash "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/watchdog.sh" cert-guard; press_any_key ;;
             c|C) source "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/nezha.sh" 2>/dev/null && cleanup_menu || echo "请先安装面板。" ;;
             d|D) source "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/nezha.sh" 2>/dev/null && watchdog_menu || (bash "${INSTALL_DIR:-$DEFAULT_INSTALL_DIR}/watchdog.sh" status; press_any_key) ;;
             0|q|Q) echo "退出脚本。"; exit 0 ;;
@@ -2064,6 +2179,7 @@ parse_args() {
             logs-nginx) ACTION="logs-nginx"; shift ;;
             logs-acme) ACTION="logs-acme"; shift ;;
             cert) ACTION="cert"; shift ;;
+            cert-guard|reissue-ssl|ssl) ACTION="cert-guard"; shift ;;
             update) ACTION="update"; shift ;;
             update-script|self-update) ACTION="update-script"; shift ;;
             update-watchdog|watchdog-update) ACTION="update-watchdog"; shift ;;
@@ -2102,6 +2218,7 @@ main() {
             logs-nginx) service_logs_nginx ;;
             logs-acme) service_logs_acme ;;
             cert) service_cert ;;
+            cert-guard) bash "$target_dir/watchdog.sh" cert-guard ;;
             update) service_update ;;
             update-script) update_self_script ;;
             update-watchdog) bash "$target_dir/watchdog.sh" update ;;
