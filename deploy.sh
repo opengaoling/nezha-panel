@@ -18,7 +18,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.9.5"
+SCRIPT_VERSION="v2.9.6"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
@@ -659,7 +659,18 @@ check_and_guard_cert() {
     fi
 
     if [ "$is_self_signed" = "true" ]; then
-        log "⚠️  [SSL 守护] 检测到当前处于自签名证书状态，正在尝试自动申请 Let's Encrypt / ZeroSSL 正式证书..."
+        # 1.1 若自签证书剩余有效期不足 30 天（如历史 1 天临时自签证书），先自动平滑升级为 10 年期自签保底
+        if ! openssl x509 -checkend 2592000 -noout -in "$cert_file" 2>/dev/null; then
+            log "🔄 [SSL 守护] 检测到自签证书剩余有效期不足 30 天（旧版 1 天证书），正在自动平滑升级为 10 年期安全保底证书..."
+            openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
+                -keyout "${BASE_DIR}/ssl/${domain}.key" \
+                -out "${BASE_DIR}/ssl/${domain}.crt" \
+                -subj "/CN=${domain}" >/dev/null 2>&1 || true
+            docker exec nezha-nginx nginx -s reload 2>/dev/null || true
+            log "✅ [SSL 守护] 已自动平滑升级为 10 年期 (3650天) 自签保底证书，Nginx 重载完成！"
+        fi
+
+        log "⚠️  [SSL 守护] 触发多引擎自动申请 Let's Encrypt / ZeroSSL / Buypass 正式证书..."
         if docker ps --format '{{.Names}}' | grep -Eq '^nezha-acme$'; then
             local email=""
             [ -f "${BASE_DIR}/.env" ] && email="$(grep -E '^EMAIL=' "${BASE_DIR}/.env" 2>/dev/null | cut -d= -f2 | tr -d ' "\r\n')"
@@ -673,7 +684,15 @@ check_and_guard_cert() {
                 issued=true
             elif docker exec nezha-acme /usr/local/bin/acme.sh --issue \
                 -d "${domain}" \
-                -w /var/www/html >> "$LOG_FILE" 2>&1; then
+                -w /var/www/html \
+                --server zerossl \
+                --force >> "$LOG_FILE" 2>&1; then
+                issued=true
+            elif docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+                -d "${domain}" \
+                -w /var/www/html \
+                --server buypass \
+                --force >> "$LOG_FILE" 2>&1; then
                 issued=true
             fi
 
@@ -695,7 +714,7 @@ check_and_guard_cert() {
                 log "🎉 [SSL 守护] 正式 SSL 证书签发并替换成功！Nginx 已完成平滑重载。"
                 return 0
             else
-                log "⏳ [SSL 守护] 正式证书签发暂未就绪（DNS 可能尚未在全球完全生效或 80 端口受阻），将在下个周期自动重试。"
+                log "⏳ [SSL 守护] 正式证书签发暂未就绪（DNS 可能尚未在全球完全生效、Cloudflare 开启了代理小黄云或 80 端口受阻），将在下个周期自动重试。"
                 return 1
             fi
         fi
@@ -1042,8 +1061,23 @@ prepare_and_issue_ssl() {
         fi
     fi
 
-    # 2. 如果没有有效证书，则临时启动自签名证书供 Nginx 启动，再通过 acme.sh 签发
+    # 2. 检查现有证书：若不存在，或存在但属于短期自签证书（如历史 1 天临时证书），自动平滑升级为 10 年期自签保底
+    local need_gen_self=false
     if [ ! -f "$cert_file" ] || [ ! -f "$key_file" ]; then
+        need_gen_self=true
+    else
+        local cur_iss cur_sub
+        cur_iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/^issuer=//')
+        cur_sub=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/^subject=//')
+        if [ "$cur_iss" = "$cur_sub" ] || echo "$cur_iss" | grep -qi "CN *= *${domain}"; then
+            if ! openssl x509 -checkend 2592000 -noout -in "$cert_file" 2>/dev/null; then
+                log_info "检测到历史自签证书剩余有效期不足 30 天（旧版 1 天证书），自动升级为 10 年期安全保底证书..."
+                need_gen_self=true
+            fi
+        fi
+    fi
+
+    if [ "$need_gen_self" = "true" ]; then
         log_info "生成 10 年期自签名保底证书以引导 Nginx 容器..."
         openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
             -keyout "$key_file" \
@@ -1056,36 +1090,68 @@ prepare_and_issue_ssl() {
     local compose_cmd="$(get_compose_cmd)"
     (cd "$target_dir" && ($compose_cmd pull nginx acme nezha-dashboard || true) && $compose_cmd up -d --remove-orphans)
 
-    # 4. 如果没有被 acme.sh 管理，则通过 acme.sh 执行签发并配置 reload 钩子
+    # 4. 如果没有被 acme.sh 管理，则通过 acme.sh 多引擎级联签发并配置 reload 钩子
     if ! docker exec nezha-acme /usr/local/bin/acme.sh --list 2>/dev/null | grep -q "$domain"; then
-        log_info "正在通过 acme.sh 自动申请 Let's Encrypt SSL 证书 (域名: ${domain})..."
+        log_info "正在通过 acme.sh 自动申请 SSL 证书 (优先 Let's Encrypt，自动故障降级)..."
         [ -n "$email" ] && docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" >/dev/null 2>&1 || true
 
-        docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+        # 探测是否有 Cloudflare 代理特征
+        local cf_detected=false
+        local probe_header
+        probe_header=$(curl -sI -m 4 "http://${domain}/" 2>/dev/null || true)
+        if echo "$probe_header" | grep -qi "cloudflare"; then
+            cf_detected=true
+        fi
+
+        local issued=false
+        if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
             -d "${domain}" \
             -w /var/www/html \
-            --server letsencrypt 2>&1 || {
-            log_warn "Let's Encrypt 签发遇到问题，尝试使用 ZeroSSL 引擎..."
-            docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+            --server letsencrypt 2>&1; then
+            issued=true
+        else
+            log_warn "Let's Encrypt 引擎签发未通过，自动切换至 ZeroSSL 备选引擎重试..."
+            if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
                 -d "${domain}" \
-                -w /var/www/html 2>&1 || true
-        }
+                -w /var/www/html \
+                --server zerossl \
+                --force 2>&1; then
+                issued=true
+            else
+                log_warn "ZeroSSL 备选引擎未通过，自动尝试 Buypass 免费公共 CA 引擎..."
+                if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+                    -d "${domain}" \
+                    -w /var/www/html \
+                    --server buypass \
+                    --force 2>&1; then
+                    issued=true
+                fi
+            fi
+        fi
 
-        # 安装证书并绑定自动 reload 钩子（先 nginx -t 语法测试通过再 reload，杜绝半截证书）
-        docker exec nezha-acme apk add --no-cache docker-cli >/dev/null 2>&1 || true
-        docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
-            -d "${domain}" \
-            --ecc \
-            --key-file "/ssl/${domain}.key" \
-            --fullchain-file "/ssl/${domain}.crt" \
-            --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" 2>&1 || {
+        if [ "$issued" = "true" ]; then
+            # 安装证书并绑定自动 reload 钩子（先 nginx -t 语法测试通过再 reload，杜绝半截证书）
+            docker exec nezha-acme apk add --no-cache docker-cli >/dev/null 2>&1 || true
             docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
                 -d "${domain}" \
+                --ecc \
                 --key-file "/ssl/${domain}.key" \
                 --fullchain-file "/ssl/${domain}.crt" \
-                --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" 2>&1 || true
-        }
-        docker exec nezha-nginx nginx -t 2>/dev/null && docker exec nezha-nginx nginx -s reload 2>/dev/null || true
+                --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" 2>&1 || {
+                docker exec nezha-acme /usr/local/bin/acme.sh --install-cert \
+                    -d "${domain}" \
+                    --key-file "/ssl/${domain}.key" \
+                    --fullchain-file "/ssl/${domain}.crt" \
+                    --reloadcmd "docker exec nezha-nginx nginx -t && docker exec nezha-nginx nginx -s reload" 2>&1 || true
+            }
+            docker exec nezha-nginx nginx -t 2>/dev/null && docker exec nezha-nginx nginx -s reload 2>/dev/null || true
+            log_ok "正式 SSL 证书已成功签发并安装！"
+        else
+            if [ "$cf_detected" = "true" ]; then
+                log_warn "💡 [智能感知诊断] 检测到该域名当前正经由 Cloudflare CDN 代理（橙色小云朵开启中）。"
+                log_info "   由于 Cloudflare 边缘代理拦截了 HTTP 验证，请在 Cloudflare DNS 面板中将该记录临时切换为「仅限 DNS（灰色云朵）」，后台即可自动完成转正！"
+            fi
+        fi
     fi
 
     # 5. 校验当前最终证书状态并给出反馈；若仍为自签证书，自动激活后台自愈转正守护
@@ -1189,7 +1255,7 @@ generate_nezha_script() {
     cat > "$target_dir/nezha.sh" << 'NEZHA_SH_EOF'
 #!/usr/bin/env bash
 # Nezha Dashboard Management Tool (Docker Nginx + acme.sh Edition)
-VERSION="v2.9.5"
+VERSION="v2.9.6"
 
 SOURCE="${BASH_SOURCE[0]}"
 while [ -h "$SOURCE" ]; do
