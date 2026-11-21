@@ -1303,7 +1303,7 @@ EOF
         log_ok "已默认开启 TSDB 时序存储 (data/tsdb, 1天自动清理，防 sqlite 膨胀)"
     fi
 
-    # 写入环境配置备忘 .env (收紧敏感配置权限为 600)
+    # 写入环境配置备忘 .env (收紧 .env 权限为 600，config.yaml 保持标准 644 方便手工维护)
     cat > "$INPUT_DIR/.env" <<EOF
 DOMAIN=${INPUT_DOMAIN}
 EMAIL=${INPUT_EMAIL}
@@ -1312,7 +1312,8 @@ SECRET_PATH=${INPUT_SECRET}
 AGENT_KEY=${INPUT_AGENT_KEY}
 INSTALL_DIR=${INPUT_DIR}
 EOF
-    chmod 600 "$INPUT_DIR/.env" "$config_file" 2>/dev/null || true
+    chmod 600 "$INPUT_DIR/.env" 2>/dev/null || true
+    chmod 644 "$config_file" 2>/dev/null || true
 
     generate_nezha_script "$INPUT_DIR"
     generate_watchdog_script "$INPUT_DIR"
@@ -1808,8 +1809,9 @@ EOF
         fi
     fi
 
-    # 收紧敏感文件权限为 600
-    chmod 600 "${target_dir}/.env" "${target_dir}/data/config.yaml" 2>/dev/null || true
+    # 收紧 .env 敏感权限为 600，config.yaml 保持标准 644 便于日常运维与编辑
+    chmod 600 "${target_dir}/.env" 2>/dev/null || true
+    chmod 644 "${target_dir}/data/config.yaml" 2>/dev/null || true
 
     prepare_and_issue_ssl "$target_dir" "$DOMAIN" "$EMAIL"
 
