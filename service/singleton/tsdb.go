@@ -14,7 +14,7 @@ var TSDBShared *tsdb.TSDB
 
 func InitTSDB() error {
 	config := &tsdb.Config{
-		RetentionDays:      30,
+		RetentionDays:      1,
 		MinFreeDiskSpaceGB: 1,
 		MaxMemoryMB:        256,
 	}

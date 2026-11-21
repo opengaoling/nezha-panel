@@ -18,12 +18,12 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # 全局默认参数与版本号
-SCRIPT_VERSION="v2.9.7"
+SCRIPT_VERSION="v2.9.8"
 DEFAULT_INSTALL_DIR="/opt/nezha-dashboard"
 DEFAULT_PORT="2052"
 DOCKER_IMAGE="ghcr.io/opengaoling/nezha-panel:latest"
 NGINX_IMAGE="nginx:alpine"
-ACME_IMAGE="neilpang/acme.sh:latest"
+ACME_IMAGE="neilpang/acme.sh:3.1.7"
 
 log_info() { echo -e "${CYAN}[INFO]${NC} $1"; }
 log_ok()   { echo -e "${GREEN}[ OK ]${NC} $1"; }
@@ -55,13 +55,22 @@ generate_random_secret() {
 
 # 检查并安装基础依赖
 install_dependencies() {
-    log_info "正在检查基础运行依赖 (curl, tar, openssl, awk, sed)..."
+    log_info "正在检查基础运行依赖 (curl, tar, openssl, awk, sed, cron)..."
     local need_install=""
     for cmd in curl tar openssl awk sed; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             need_install="$need_install $cmd"
         fi
     done
+    if ! command -v crontab >/dev/null 2>&1; then
+        if command -v apt-get >/dev/null 2>&1; then
+            need_install="$need_install cron"
+        elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+            need_install="$need_install cronie"
+        elif command -v apk >/dev/null 2>&1; then
+            need_install="$need_install crond"
+        fi
+    fi
 
     if [ -n "$need_install" ]; then
         log_info "正在安装缺失的工具:$need_install"
@@ -74,6 +83,13 @@ install_dependencies() {
         elif command -v apk >/dev/null 2>&1; then
             apk add --no-cache $need_install
         fi
+    fi
+
+    # 确保 cron 服务已启用并处于运行状态
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable --now cron 2>/dev/null || systemctl enable --now crond 2>/dev/null || true
+    elif command -v service >/dev/null 2>&1; then
+        service cron start 2>/dev/null || service crond start 2>/dev/null || true
     fi
 }
 
@@ -187,13 +203,15 @@ gather_user_input() {
         fi
     done
 
-    # 2. 邮箱配置 (可选，用于证书通知)
+    # 2. 邮箱配置 (用于 SSL 证书申请与到期提醒)
+    local default_email="admin@${INPUT_DOMAIN}"
     if [ -z "$EMAIL" ]; then
         if [ "$NON_INTERACTIVE" = "true" ] || [ "$NON_INTERACTIVE" = "1" ]; then
-            INPUT_EMAIL=""
+            INPUT_EMAIL="$default_email"
         else
-            read -r -p "👉 请输入联系邮箱 (用于 acme.sh 证书通知，建议填写，回车跳过): " INPUT_EMAIL
+            read -r -p "👉 请输入联系邮箱 (用于 acme.sh 证书通知与 CA 注册，回车默认: ${default_email}): " INPUT_EMAIL
             INPUT_EMAIL="$(echo "$INPUT_EMAIL" | tr -d ' ')"
+            [ -z "$INPUT_EMAIL" ] && INPUT_EMAIL="$default_email"
         fi
     else
         INPUT_EMAIL="$EMAIL"
@@ -437,6 +455,12 @@ server {
     proxy_buffer_size           8k;
     proxy_http_version          1.1;
 
+    # HTTP-01 acme.sh 验证路径（针对 Cloudflare 强制 HTTPS 边缘重定向或 301 跟随保护）
+    location /.well-known/acme-challenge/ {
+        root /var/www/html;
+        try_files \$uri =404;
+    }
+
     # gRPC Agent 监控心跳流
     location /proto.NezhaService/ {
         grpc_pass grpc://nezha-dashboard:${port};
@@ -560,7 +584,7 @@ services:
       - ./ssl:/ssl
       - ./acme-challenge:/var/www/html/.well-known/acme-challenge
       - /var/run/docker.sock:/var/run/docker.sock
-    entrypoint: /bin/sh -c 'which docker >/dev/null 2>&1 || apk add --no-cache docker-cli >/dev/null 2>&1; trap exit TERM; while :; do /usr/local/bin/acme.sh --cron --home /acme.sh; sleep 86400; done'
+    entrypoint: /bin/sh -c 'which docker >/dev/null 2>&1 || apk add --no-cache docker-cli >/dev/null 2>&1; trap exit TERM; /usr/local/bin/acme.sh --upgrade --auto-upgrade 0 >/dev/null 2>&1; while :; do /usr/local/bin/acme.sh --cron --home /acme.sh; sleep 86400; done'
     networks:
       - nezha-net
 
@@ -605,8 +629,8 @@ CONTAINER_NAME="nezha-dashboard"
 LOG_FILE="/var/log/nezha-watchdog.log"
 CRON_FILE="/etc/cron.d/nezha-watchdog"
 DEFAULT_SCHEDULE="30 4 * * *"
-LOCK_FILE="/run/nezha-watchdog.lock"
-[ ! -d "/run" ] && LOCK_FILE="/tmp/nezha-watchdog.lock"
+LOCK_FILE="/run/nezha-watchdog-exec.lock"
+[ ! -d "/run" ] && LOCK_FILE="/tmp/nezha-watchdog-exec.lock"
 
 # 确保日志文件不超过 5MB，超出截断保留最新 1000 行
 rotate_log_if_needed() {
@@ -660,7 +684,7 @@ check_and_guard_cert() {
 
     if [ "$is_self_signed" = "true" ]; then
         # 1.1 若自签证书剩余有效期不足 30 天（如历史 1 天临时自签证书），先自动平滑升级为 10 年期自签保底
-        if ! openssl x509 -checkend 2592000 -noout -in "$cert_file" 2>/dev/null; then
+        if ! openssl x509 -checkend 2592000 -noout -in "$cert_file" >/dev/null 2>&1; then
             log "🔄 [SSL 守护] 检测到自签证书剩余有效期不足 30 天（旧版 1 天证书），正在自动平滑升级为 10 年期安全保底证书..."
             openssl req -x509 -nodes -days 3650 -newkey rsa:2048 \
                 -keyout "${BASE_DIR}/ssl/${domain}.key" \
@@ -674,7 +698,11 @@ check_and_guard_cert() {
         if docker ps --format '{{.Names}}' | grep -Eq '^nezha-acme$'; then
             local email=""
             [ -f "${BASE_DIR}/.env" ] && email="$(grep -E '^EMAIL=' "${BASE_DIR}/.env" 2>/dev/null | cut -d= -f2 | tr -d ' "\r\n')"
-            [ -n "$email" ] && docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" >/dev/null 2>&1 || true
+            [ -z "$email" ] && email="admin@${domain}"
+            docker exec nezha-acme /usr/local/bin/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+            docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" --server letsencrypt >/dev/null 2>&1 || true
+            docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" --server zerossl >/dev/null 2>&1 || true
+            docker exec nezha-acme /usr/local/bin/acme.sh --upgrade --auto-upgrade 0 >/dev/null 2>&1 || true
 
             # 清除可能残留的半成品无效配置目录（彻底打破 Skipping invalid cert 死锁）
             docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
@@ -683,21 +711,24 @@ check_and_guard_cert() {
             if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
                 -d "${domain}" \
                 -w /var/www/html \
-                --force \
                 --server letsencrypt >> "$LOG_FILE" 2>&1; then
                 issued=true
-            elif docker exec nezha-acme /usr/local/bin/acme.sh --issue \
-                -d "${domain}" \
-                -w /var/www/html \
-                --server zerossl \
-                --force >> "$LOG_FILE" 2>&1; then
-                issued=true
-            elif docker exec nezha-acme /usr/local/bin/acme.sh --issue \
-                -d "${domain}" \
-                -w /var/www/html \
-                --server buypass \
-                --force >> "$LOG_FILE" 2>&1; then
-                issued=true
+            else
+                docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
+                if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+                    -d "${domain}" \
+                    -w /var/www/html \
+                    --server zerossl >> "$LOG_FILE" 2>&1; then
+                    issued=true
+                else
+                    docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
+                    if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
+                        -d "${domain}" \
+                        -w /var/www/html \
+                        --server buypass >> "$LOG_FILE" 2>&1; then
+                        issued=true
+                    fi
+                fi
             fi
 
             if [ "$issued" = "true" ]; then
@@ -718,6 +749,8 @@ check_and_guard_cert() {
                 log "🎉 [SSL 守护] 正式 SSL 证书签发并替换成功！Nginx 已完成平滑重载。"
                 return 0
             else
+                # 签发未通过：彻底清理半成品残留目录，杜绝 acme.sh 容器每日 cron 报 Skipping invalid cert 死锁
+                docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
                 log "⏳ [SSL 守护] 正式证书签发暂未就绪（DNS 可能尚未在全球完全生效、Cloudflare 开启了代理小黄云或 80 端口受阻），将在下个周期自动重试。"
                 return 1
             fi
@@ -742,7 +775,7 @@ check_and_guard_cert() {
             fi
         fi
     else
-        log "✅ SSL 证书状态正常（距到期超过 20 天）。"
+        log "✅ 正式 CA 证书状态正常（距到期超过 20 天）。"
     fi
 
     # 3. 紧急阈值告警 (小于 7 天)
@@ -901,37 +934,33 @@ enable_cron() {
 
     echo "正在配置看门狗定时更新任务 (计划: ${schedule})..."
 
-    # 检查并优先使用 flock 防止并发重叠执行
-    local flock_prefix=""
-    if command -v flock >/dev/null 2>&1; then
-        flock_prefix="flock -n /run/nezha-watchdog.lock "
-    fi
-
     if [ ! -d "/etc/cron.d" ]; then
         echo "⚠️  未找到 /etc/cron.d 目录，尝试使用 crontab 配置..."
-        (crontab -l 2>/dev/null | grep -v "${script_path}"; echo "${schedule} ${flock_prefix}${script_path} run >/dev/null 2>&1") | crontab -
+        (crontab -l 2>/dev/null | grep -v "${script_path}"; echo "${schedule} ${script_path} run >/dev/null 2>&1") | crontab -
     else
         cat > "$CRON_FILE" << EOF
 # Nezha Dashboard Watchdog (Auto-Update GHCR Image)
-# 每日定时拉取 GHCR 镜像并比对 SHA256 重建容器 (flock 并发锁保护)
+# 每日定时拉取 GHCR 镜像并比对 SHA256 重建容器 (内部自带 flock 并发锁保护)
 SHELL=/bin/bash
 PATH=/usr/local/sbin:/usr/local/bin:/sbin:/bin:/usr/sbin:/usr/bin
 
-${schedule} root ${flock_prefix}${script_path} run >/dev/null 2>&1
+${schedule} root ${script_path} run >/dev/null 2>&1
 EOF
         chmod 0644 "$CRON_FILE"
     fi
 
-    # 确保 cron 服务正常运行
-    if systemctl is-active cron >/dev/null 2>&1; then
-        systemctl restart cron 2>/dev/null || true
-    elif systemctl is-active crond >/dev/null 2>&1; then
-        systemctl restart crond 2>/dev/null || true
+    # 确保 cron / crond 服务开机自启并立即处于运行状态
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl enable --now cron 2>/dev/null || systemctl enable --now crond 2>/dev/null || true
+        systemctl restart cron 2>/dev/null || systemctl restart crond 2>/dev/null || true
+    elif command -v service >/dev/null 2>&1; then
+        service cron start 2>/dev/null || service crond start 2>/dev/null || true
+        service cron restart 2>/dev/null || service crond restart 2>/dev/null || true
     fi
 
     echo "✅ 看门狗每日自动更新已成功启用！"
     echo "   执行频率: 每天 04:30 (${schedule})"
-    echo "   并发保护: flock 文件锁 (/run/nezha-watchdog.lock)"
+    echo "   并发保护: 内部 flock 文件锁 (${LOCK_FILE})"
     echo "   任务配置: ${CRON_FILE}"
     echo "   运行日志: ${LOG_FILE}"
 }
@@ -968,6 +997,24 @@ status_cron() {
     else
         echo "定时任务配置: [未启用] (可通过 'nezha watchdog enable' 启用)"
     fi
+
+    local cron_svc_status="未知"
+    if command -v systemctl >/dev/null 2>&1; then
+        if systemctl is-active cron >/dev/null 2>&1; then
+            cron_svc_status="运行中 (cron.service active)"
+        elif systemctl is-active crond >/dev/null 2>&1; then
+            cron_svc_status="运行中 (crond.service active)"
+        else
+            cron_svc_status="⚠️ 未运行 (cron/crond inactive! 定时任务无法触发，请执行: systemctl enable --now cron)"
+        fi
+    elif command -v service >/dev/null 2>&1; then
+        if service cron status >/dev/null 2>&1 || service crond status >/dev/null 2>&1; then
+            cron_svc_status="运行中"
+        else
+            cron_svc_status="⚠️ 未运行"
+        fi
+    fi
+    echo "系统守护服务: ${cron_svc_status}"
 
     echo ""
     local cur_id
@@ -1074,7 +1121,7 @@ prepare_and_issue_ssl() {
         cur_iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/^issuer=//')
         cur_sub=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/^subject=//')
         if [ "$cur_iss" = "$cur_sub" ] || echo "$cur_iss" | grep -qi "CN *= *${domain}"; then
-            if ! openssl x509 -checkend 2592000 -noout -in "$cert_file" 2>/dev/null; then
+            if ! openssl x509 -checkend 2592000 -noout -in "$cert_file" >/dev/null 2>&1; then
                 log_info "检测到历史自签证书剩余有效期不足 30 天（旧版 1 天证书），自动升级为 10 年期安全保底证书..."
                 need_gen_self=true
             fi
@@ -1105,7 +1152,14 @@ prepare_and_issue_ssl() {
 
     if [ "$need_formal_cert" = "true" ]; then
         log_info "正在通过 acme.sh 自动申请 SSL 证书 (优先 Let's Encrypt，自动故障降级)..."
-        [ -n "$email" ] && docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$email" >/dev/null 2>&1 || true
+        local acme_email="$email"
+        [ -z "$acme_email" ] && acme_email="admin@${domain}"
+
+        # 注册账号并设定默认 CA 为 letsencrypt
+        docker exec nezha-acme /usr/local/bin/acme.sh --set-default-ca --server letsencrypt >/dev/null 2>&1 || true
+        docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$acme_email" --server letsencrypt >/dev/null 2>&1 || true
+        docker exec nezha-acme /usr/local/bin/acme.sh --register-account -m "$acme_email" --server zerossl >/dev/null 2>&1 || true
+        docker exec nezha-acme /usr/local/bin/acme.sh --upgrade --auto-upgrade 0 >/dev/null 2>&1 || true
 
         # 清除可能残留的历史半成品无效配置目录（彻底打破 Skipping invalid cert 死锁）
         docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
@@ -1122,24 +1176,23 @@ prepare_and_issue_ssl() {
         if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
             -d "${domain}" \
             -w /var/www/html \
-            --force \
             --server letsencrypt 2>&1; then
             issued=true
         else
-            log_warn "Let's Encrypt 引擎签发未通过，自动切换至 ZeroSSL 备选引擎重试..."
+            log_warn "Let's Encrypt 引擎签发未通过，清理过渡状态并自动切换至 ZeroSSL 备选引擎重试..."
+            docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
             if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
                 -d "${domain}" \
                 -w /var/www/html \
-                --server zerossl \
-                --force 2>&1; then
+                --server zerossl 2>&1; then
                 issued=true
             else
-                log_warn "ZeroSSL 备选引擎未通过，自动尝试 Buypass 免费公共 CA 引擎..."
+                log_warn "ZeroSSL 备选引擎未通过，清理过渡状态并尝试 Buypass 免费公共 CA 引擎..."
+                docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
                 if docker exec nezha-acme /usr/local/bin/acme.sh --issue \
                     -d "${domain}" \
                     -w /var/www/html \
-                    --server buypass \
-                    --force 2>&1; then
+                    --server buypass 2>&1; then
                     issued=true
                 fi
             fi
@@ -1163,6 +1216,8 @@ prepare_and_issue_ssl() {
             docker exec nezha-nginx nginx -t 2>/dev/null && docker exec nezha-nginx nginx -s reload 2>/dev/null || true
             log_ok "正式 SSL 证书已成功签发并安装！"
         else
+            # 签发未通过：彻底清理半成品残留目录，杜绝 acme.sh 容器每日 cron 报 Skipping invalid cert 死锁
+            docker exec nezha-acme rm -rf "/acme.sh/${domain}_ecc" "/acme.sh/${domain}" >/dev/null 2>&1 || true
             if [ "$cf_detected" = "true" ]; then
                 log_warn "💡 [智能感知诊断] 检测到该域名当前正经由 Cloudflare CDN 代理（橙色小云朵开启中）。"
                 log_info "   由于 Cloudflare 边缘代理拦截了 HTTP 验证，请在 Cloudflare DNS 面板中将该记录临时切换为「仅限 DNS（灰色云朵）」，后台即可自动完成转正！"
@@ -1225,13 +1280,13 @@ write_configs() {
             log_ok "已预置 Agent 通信密钥 (agent_secret_key): ${INPUT_AGENT_KEY}"
         fi
         if grep -qE '^tsdb: *\{\}' "$config_file"; then
-            sed -i '/^tsdb: *{}/c\tsdb:\n  data_path: data/tsdb\n  retention_days: 30' "$config_file"
-            log_ok "已默认开启 TSDB 时序库 (30天自动滚动清理，防 sqlite 膨胀)"
+            sed -i '/^tsdb: *{}/c\tsdb:\n  data_path: data/tsdb\n  retention_days: 1' "$config_file"
+            log_ok "已默认开启 TSDB 时序库 (1天自动滚动清理，防 sqlite 膨胀)"
         elif ! grep -qE '^tsdb:' "$config_file"; then
             cat >> "$config_file" <<EOF
 tsdb:
   data_path: data/tsdb
-  retention_days: 30
+  retention_days: 1
 EOF
             log_ok "已默认配置开启 TSDB 时序存储"
         fi
@@ -1239,16 +1294,16 @@ EOF
         cat > "$config_file" <<EOF
 tsdb:
   data_path: data/tsdb
-  retention_days: 30
+  retention_days: 1
 EOF
         if [ -n "$INPUT_AGENT_KEY" ]; then
             echo "agent_secret_key: ${INPUT_AGENT_KEY}" >> "$config_file"
             log_ok "已预置 Agent 通信密钥 (agent_secret_key): ${INPUT_AGENT_KEY}"
         fi
-        log_ok "已默认开启 TSDB 时序存储 (data/tsdb, 30天自动清理，防 sqlite 膨胀)"
+        log_ok "已默认开启 TSDB 时序存储 (data/tsdb, 1天自动清理，防 sqlite 膨胀)"
     fi
 
-    # 写入环境配置备忘 .env
+    # 写入环境配置备忘 .env (收紧敏感配置权限为 600)
     cat > "$INPUT_DIR/.env" <<EOF
 DOMAIN=${INPUT_DOMAIN}
 EMAIL=${INPUT_EMAIL}
@@ -1257,6 +1312,7 @@ SECRET_PATH=${INPUT_SECRET}
 AGENT_KEY=${INPUT_AGENT_KEY}
 INSTALL_DIR=${INPUT_DIR}
 EOF
+    chmod 600 "$INPUT_DIR/.env" "$config_file" 2>/dev/null || true
 
     generate_nezha_script "$INPUT_DIR"
     generate_watchdog_script "$INPUT_DIR"
@@ -1445,7 +1501,7 @@ show_info() {
     echo "通信端口:     ${PORT}"
     echo "安装目录:     ${BASE_DIR}"
     echo "网关架构:     Docker Nginx (alpine, 极低内存)"
-    echo "时序存储:     TSDB 已启用 (data/tsdb, 30天自动滚动保留，防 sqlite 膨胀)"
+    echo "时序存储:     TSDB 已启用 (data/tsdb, 1天自动滚动保留，防 sqlite 膨胀)"
     echo "镜像看门狗:   已配置守护 (每日 04:30 自动拉取 GHCR 镜像并比对 SHA256 平滑重建)"
     echo "证书续期:     Docker acme.sh 容器后台自动守护续期"
     echo "证书文件:     ${BASE_DIR}/ssl/${DOMAIN}.crt"
@@ -1465,8 +1521,13 @@ show_cert_info() {
         local expiry
         expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d= -f2)
         echo "到期时间: $expiry"
-        if openssl x509 -checkend $((15 * 86400)) -noout -in "$cert_file" 2>/dev/null; then
-            echo "状态: ✅ 正常有效（距到期超过 15 天）"
+        local cur_iss cur_sub
+        cur_iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/^issuer=//')
+        cur_sub=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/^subject=//')
+        if [ "$cur_iss" = "$cur_sub" ] || echo "$cur_iss" | grep -qi "CN *= *${DOMAIN}"; then
+            echo "状态: ⚠️  临时自签名保底证书（未通过公共 CA 认证，浏览器会提示不受信任，正在等待看门狗自动转正）"
+        elif openssl x509 -checkend $((15 * 86400)) -noout -in "$cert_file" >/dev/null 2>&1; then
+            echo "状态: ✅ 正常有效（公共 CA 签发，距到期超过 15 天）"
         else
             echo "状态: ⚠️  证书将在 15 天内到期，后台 acme.sh 将自动续签。"
         fi
@@ -1735,17 +1796,20 @@ service_update() {
     local config_file="${target_dir}/data/config.yaml"
     if [ -f "$config_file" ]; then
         if grep -qE '^tsdb: *\{\}' "$config_file"; then
-            sed -i '/^tsdb: *{}/c\tsdb:\n  data_path: data/tsdb\n  retention_days: 30' "$config_file"
-            log_ok "已为现有部署自动升级开启 TSDB 时序库 (30天自动滚动清理，防 sqlite 膨胀)"
+            sed -i '/^tsdb: *{}/c\tsdb:\n  data_path: data/tsdb\n  retention_days: 1' "$config_file"
+            log_ok "已为现有部署自动升级开启 TSDB 时序库 (1天自动滚动清理，防 sqlite 膨胀)"
         elif ! grep -qE '^tsdb:' "$config_file"; then
             cat >> "$config_file" <<EOF
 tsdb:
   data_path: data/tsdb
-  retention_days: 30
+  retention_days: 1
 EOF
             log_ok "已自动追加开启 TSDB 时序库配置"
         fi
     fi
+
+    # 收紧敏感文件权限为 600
+    chmod 600 "${target_dir}/.env" "${target_dir}/data/config.yaml" 2>/dev/null || true
 
     prepare_and_issue_ssl "$target_dir" "$DOMAIN" "$EMAIL"
 
@@ -1912,8 +1976,13 @@ service_cert() {
         local expiry
         expiry=$(openssl x509 -in "$cert_file" -noout -enddate 2>/dev/null | cut -d= -f2)
         echo "到期时间: $expiry"
-        if openssl x509 -checkend $((15 * 86400)) -noout -in "$cert_file" 2>/dev/null; then
-            echo "状态: ✅ 正常有效（距到期超过 15 天）"
+        local cur_iss cur_sub
+        cur_iss=$(openssl x509 -in "$cert_file" -noout -issuer 2>/dev/null | sed 's/^issuer=//')
+        cur_sub=$(openssl x509 -in "$cert_file" -noout -subject 2>/dev/null | sed 's/^subject=//')
+        if [ "$cur_iss" = "$cur_sub" ] || echo "$cur_iss" | grep -qi "CN *= *${DOMAIN}"; then
+            echo "状态: ⚠️  临时自签名保底证书（未通过公共 CA 认证，浏览器会提示不受信任，正在等待看门狗自动转正）"
+        elif openssl x509 -checkend $((15 * 86400)) -noout -in "$cert_file" >/dev/null 2>&1; then
+            echo "状态: ✅ 正常有效（公共 CA 签发，距到期超过 15 天）"
         else
             echo "状态: ⚠️  证书将在 15 天内到期，后台 acme.sh 将自动续签。"
         fi
@@ -1960,7 +2029,7 @@ service_info() {
     echo -e "  - 通信端口:     ${GREEN}${PORT}${NC}"
     echo -e "  - 安装目录:     ${GREEN}${INSTALL_DIR:-$target_dir}${NC}"
     echo -e "  - 容器网关:     ${GREEN}Docker Nginx (alpine)${NC}"
-    echo -e "  - 时序存储:     ${GREEN}TSDB 已启用 (data/tsdb, 30天自动滚动清理，防 sqlite 膨胀)${NC}"
+    echo -e "  - 时序存储:     ${GREEN}TSDB 已启用 (data/tsdb, 1天自动滚动清理，防 sqlite 膨胀)${NC}"
     echo -e "  - 证书守护:     ${GREEN}Docker acme.sh (自动续期)${NC}"
     echo -e "${CYAN}${BOLD}============================================================================${NC}"
     echo ""

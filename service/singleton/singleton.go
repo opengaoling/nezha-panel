@@ -223,8 +223,8 @@ func CleanMonitorHistory() {
 	// 1. 清理已被删除的服务器的流量记录
 	DB.Unscoped().Delete(&model.Transfer{}, "server_id NOT IN (SELECT `id` FROM servers)")
 
-	// 2. 确定数据保留时长（默认 30 天，可由 tsdb.retention_days 配置）
-	retentionDays := 30
+	// 2. 确定数据保留时长（默认 1 天，可由 tsdb.retention_days 配置）
+	retentionDays := 1
 	if Conf.TSDB.RetentionDays > 0 {
 		retentionDays = int(Conf.TSDB.RetentionDays)
 	}

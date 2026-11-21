@@ -6,7 +6,7 @@ import "time"
 type Config struct {
 	// DataPath 数据存储路径，为空则不启用 TSDB
 	DataPath string `koanf:"data_path" json:"data_path,omitempty"`
-	// RetentionDays 数据保留天数，默认 30 天
+	// RetentionDays 数据保留天数，默认 1 天
 	RetentionDays uint16 `koanf:"retention_days" json:"retention_days,omitempty"`
 	// MinFreeDiskSpaceGB 最小磁盘剩余空间(GB)，默认 1GB
 	// 当磁盘剩余空间低于此值时，TSDB 将停止接收新数据以防止磁盘耗尽
@@ -25,7 +25,7 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		DataPath:                 "",
-		RetentionDays:            30,
+		RetentionDays:            1,
 		MinFreeDiskSpaceGB:       1,
 		MaxMemoryMB:              256,
 		DedupInterval:            30 * time.Second,
@@ -37,7 +37,7 @@ func DefaultConfig() *Config {
 // Validate 验证配置有效性并填充默认值
 func (c *Config) Validate() {
 	if c.RetentionDays == 0 {
-		c.RetentionDays = 30
+		c.RetentionDays = 1
 	}
 	if c.MinFreeDiskSpaceGB <= 0 {
 		c.MinFreeDiskSpaceGB = 1
